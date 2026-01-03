@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Search, Building2, CheckCircle, XCircle } from 'lucide-react'
+import { Search, Building2, CheckCircle, XCircle, Gauge } from 'lucide-react'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -20,6 +20,8 @@ const toTitleCase = (str) => {
 export default function Pumps() {
   const navigate = useNavigate()
   const [pumps, setPumps] = useState([])
+  const [meterReadings, setMeterReadings] = useState({})
+  const [nozzles, setNozzles] = useState({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -48,10 +50,95 @@ export default function Pumps() {
 
       if (error) throw error
       setPumps(data || [])
+      
+      // Fetch meter readings for all pumps
+      if (data && data.length > 0) {
+        await fetchMeterReadingsForPumps(data.map(p => p.id))
+      }
     } catch (error) {
       console.error('Error fetching pumps:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchMeterReadingsForPumps = async (pumpIds) => {
+    try {
+      // Fetch all meter readings for these pumps
+      const { data, error } = await supabase
+        .from('nozzle_reading')
+        .select('pump_id, opening_reading, closing_reading, date, nozzle_id, sales, rsp_applied, ro_price_applied')
+        .in('pump_id', pumpIds)
+        .order('date', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching meter readings:', error)
+        return
+      }
+
+      // Group meter readings by pump_id and get the latest for each
+      const readingsMap = {}
+      const nozzleIdSet = new Set()
+      const nozzlePumpSet = new Set()
+      if (data) {
+        data.forEach(reading => {
+          if (!readingsMap[reading.pump_id]) {
+            readingsMap[reading.pump_id] = {
+              count: 0,
+              latest: null,
+              latestValue: null
+            }
+          }
+          readingsMap[reading.pump_id].count++
+          // Store the latest reading (first one since sorted by date desc)
+          if (!readingsMap[reading.pump_id].latest) {
+            readingsMap[reading.pump_id].latest = reading.date
+            const closing = reading.closing_reading
+            const opening = reading.opening_reading
+            const preferred = closing !== null && closing !== undefined ? closing : opening
+            readingsMap[reading.pump_id].latestValue = preferred
+            readingsMap[reading.pump_id].latestNozzle = reading.nozzle_id
+            readingsMap[reading.pump_id].latestSales = reading.sales
+            readingsMap[reading.pump_id].latestRsp = reading.rsp_applied
+            readingsMap[reading.pump_id].latestRo = reading.ro_price_applied
+          }
+          if (reading.nozzle_id) {
+            nozzleIdSet.add(reading.nozzle_id)
+            nozzlePumpSet.add(reading.pump_id)
+          }
+        })
+      }
+      setMeterReadings(readingsMap)
+
+      if (nozzleIdSet.size > 0 && nozzlePumpSet.size > 0) {
+        await fetchNozzles(Array.from(nozzlePumpSet), Array.from(nozzleIdSet))
+      }
+    } catch (error) {
+      console.error('Error fetching meter readings:', error)
+    }
+  }
+
+  const fetchNozzles = async (pumpIds, nozzleIds) => {
+    try {
+      const { data, error } = await supabase
+        .from('nozzle_info')
+        .select('*')
+        .in('pump_id', pumpIds)
+        .in('nozzle_id', nozzleIds)
+
+      if (error) {
+        console.error('Error fetching nozzle info:', error)
+        return
+      }
+
+      const map = {}
+      data?.forEach((nozzle) => {
+        const key = `${nozzle.pump_id}:${nozzle.nozzle_id}`
+        map[key] = nozzle
+      })
+      setNozzles(map)
+    } catch (err) {
+      console.error('Error fetching nozzle info:', err)
     }
   }
 
@@ -248,6 +335,9 @@ export default function Pumps() {
                     Subscription
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Meter Readings
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
                   </th>
                 </tr>
@@ -303,6 +393,42 @@ export default function Pumps() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="font-medium">{pump.subscription_plan ? toTitleCase(pump.subscription_plan) : 'N/A'}</div>
                       <div className="text-xs text-gray-500 font-medium">{pump.subscription_status ? toTitleCase(pump.subscription_status) : 'N/A'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {meterReadings[pump.id] ? (
+                        <div className="flex items-center gap-2">
+                          <Gauge className="w-4 h-4 text-indigo-500" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">
+                              {meterReadings[pump.id].count} readings
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Latest reading: {meterReadings[pump.id].latestValue !== null && meterReadings[pump.id].latestValue !== undefined
+                                ? parseFloat(meterReadings[pump.id].latestValue).toFixed(2)
+                                : 'N/A'}
+                              {(() => {
+                                const key = `${pump.id}:${meterReadings[pump.id].latestNozzle}`
+                                const nozzle = nozzles[key]
+                                const label = nozzle?.nozzle_name || nozzle?.name
+                                return meterReadings[pump.id].latestNozzle
+                                  ? ` • ${label || `Nozzle ${meterReadings[pump.id].latestNozzle}`}`
+                                  : ''
+                              })()}
+                              {meterReadings[pump.id].latestSales !== null && meterReadings[pump.id].latestSales !== undefined
+                                ? ` • Sales ${parseFloat(meterReadings[pump.id].latestSales).toFixed(2)}`
+                                : ''}
+                              {meterReadings[pump.id].latestRsp !== null && meterReadings[pump.id].latestRsp !== undefined
+                                ? ` • RSP ${parseFloat(meterReadings[pump.id].latestRsp).toFixed(3)}`
+                                : ''}
+                              {meterReadings[pump.id].latestRo !== null && meterReadings[pump.id].latestRo !== undefined
+                                ? ` • RO ${parseFloat(meterReadings[pump.id].latestRo).toFixed(3)}`
+                                : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">No readings</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(pump.created_at).toLocaleDateString()}

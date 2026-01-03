@@ -11,6 +11,7 @@ import {
   DollarSign, 
   Droplets,
   Settings,
+  FileText,
   LogOut
 } from 'lucide-react'
 
@@ -34,6 +35,7 @@ export default function Layout() {
     { path: '/salary-entries', icon: DollarSign, label: 'Salaries' },
     { path: '/dip-entries', icon: Droplets, label: 'Dip Entries' },
     { path: '/settings', icon: Settings, label: 'Settings' },
+    { path: '/audit-logs', icon: FileText, label: 'Activity Log' },
   ]
 
   return (

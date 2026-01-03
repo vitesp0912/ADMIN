@@ -20,6 +20,8 @@ const toTitleCase = (str) => {
 export default function MeterReadings() {
   const [readings, setReadings] = useState([])
   const [pumps, setPumps] = useState({})
+  const [nozzles, setNozzles] = useState({})
+  const [fuelTypes, setFuelTypes] = useState({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -30,17 +32,20 @@ export default function MeterReadings() {
   const fetchReadings = async () => {
     try {
       const { data, error } = await supabase
-        .from('meter_readings')
+        .from('nozzle_reading')
         .select('*')
-        .order('date_time', { ascending: false })
+        .order('date', { ascending: false })
         .limit(1000)
 
       if (error) throw error
 
       setReadings(data || [])
 
-      // Fetch pump names
       const pumpIds = [...new Set((data || []).map((r) => r.pump_id))]
+      const nozzleIds = [...new Set((data || []).map((r) => r.nozzle_id))]
+      const fuelTypeIds = [...new Set((data || []).map((r) => r.fuel_type_id))].filter(Boolean)
+
+      // Fetch pump names
       if (pumpIds.length > 0) {
         const { data: pumpsData, error: pumpsError } = await supabase
           .from('pumps')
@@ -55,6 +60,16 @@ export default function MeterReadings() {
           setPumps(pumpsMap)
         }
       }
+
+      // Fetch nozzle names for these pumps
+      if (pumpIds.length > 0 && nozzleIds.length > 0) {
+        await fetchNozzles(pumpIds, nozzleIds)
+      }
+
+      // Fetch fuel type names
+      if (fuelTypeIds.length > 0) {
+        await fetchFuelTypes(fuelTypeIds)
+      }
     } catch (error) {
       console.error('Error fetching meter readings:', error)
     } finally {
@@ -62,12 +77,57 @@ export default function MeterReadings() {
     }
   }
 
+  const fetchNozzles = async (pumpIds, nozzleIds) => {
+    try {
+      const { data, error } = await supabase
+        .from('nozzle_info')
+        .select('*')
+        .in('pump_id', pumpIds)
+        .in('nozzle_id', nozzleIds)
+
+      if (error) return console.error('Error fetching nozzle info:', error)
+
+      const map = {}
+      data?.forEach((nozzle) => {
+        const key = `${nozzle.pump_id}:${nozzle.nozzle_id}`
+        map[key] = nozzle
+      })
+      setNozzles(map)
+    } catch (err) {
+      console.error('Error fetching nozzle info:', err)
+    }
+  }
+
+  const fetchFuelTypes = async (fuelTypeIds) => {
+    try {
+      const { data, error } = await supabase
+        .from('fuel_types')
+        .select('*')
+        .in('id', fuelTypeIds)
+
+      if (error) return console.error('Error fetching fuel types:', error)
+
+      const map = {}
+      data?.forEach((fuel) => {
+        map[fuel.id] = fuel
+      })
+      setFuelTypes(map)
+    } catch (err) {
+      console.error('Error fetching fuel types:', err)
+    }
+  }
+
   const filteredReadings = readings.filter((reading) => {
+    const nozzleKey = `${reading.pump_id}:${reading.nozzle_id}`
+    const nozzleName = nozzles[nozzleKey]?.nozzle_name || nozzles[nozzleKey]?.name || ''
+    const fuelName = fuelTypes[reading.fuel_type_id]?.name || fuelTypes[reading.fuel_type_id]?.fuel_type || fuelTypes[reading.fuel_type_id]?.title || ''
     const matchesSearch =
       pumps[reading.pump_id]?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       pumps[reading.pump_id]?.pump_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reading.nozzle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reading.fuel_type?.toLowerCase().includes(searchTerm.toLowerCase())
+      nozzleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      reading.nozzle_id?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fuelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      reading.fuel_type_id?.toString().toLowerCase().includes(searchTerm.toLowerCase())
 
     return matchesSearch
   })
@@ -117,13 +177,10 @@ export default function MeterReadings() {
               <thead className="bg-gradient-to-r from-gray-100 to-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date & Time
+                    Date
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Pump
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Shift
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Nozzle
@@ -132,13 +189,19 @@ export default function MeterReadings() {
                     Fuel Type
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reading Type
+                    Opening Reading
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Reading Value
+                    Closing Reading
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Difference
+                    Sales
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    RSP Applied
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    RO Price
                   </th>
                 </tr>
               </thead>
@@ -146,7 +209,7 @@ export default function MeterReadings() {
                 {filteredReadings.map((reading) => (
                   <tr key={reading.id} className="hover:bg-indigo-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {format(new Date(reading.date_time), 'dd MMM yyyy HH:mm')}
+                      {format(new Date(reading.date), 'dd MMM yyyy')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {pumps[reading.pump_id] ? (
@@ -163,30 +226,42 @@ export default function MeterReadings() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {reading.shift ? toTitleCase(reading.shift) : 'N/A'}
+                      {(() => {
+                        const key = `${reading.pump_id}:${reading.nozzle_id}`
+                        const nozzle = nozzles[key]
+                        return nozzle?.nozzle_name || nozzle?.name || reading.nozzle_id || 'N/A'
+                      })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {reading.nozzle || 'N/A'}
+                      {(() => {
+                        const fuel = fuelTypes[reading.fuel_type_id]
+                        return fuel?.name || fuel?.fuel_type || fuel?.title || reading.fuel_type_id || 'N/A'
+                      })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {reading.fuel_type ? toTitleCase(reading.fuel_type) : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          reading.reading_type === 'start'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}
-                      >
-                        {reading.reading_type ? toTitleCase(reading.reading_type) : 'N/A'}
-                      </span>
+                      {reading.opening_reading !== null && reading.opening_reading !== undefined
+                        ? parseFloat(reading.opening_reading).toFixed(2)
+                        : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {parseFloat(reading.reading_value).toFixed(2)}
+                      {reading.closing_reading !== null && reading.closing_reading !== undefined
+                        ? parseFloat(reading.closing_reading).toFixed(2)
+                        : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {reading.difference ? parseFloat(reading.difference).toFixed(2) : 'N/A'}
+                      {reading.sales !== null && reading.sales !== undefined
+                        ? parseFloat(reading.sales).toFixed(2)
+                        : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {reading.rsp_applied !== null && reading.rsp_applied !== undefined
+                        ? parseFloat(reading.rsp_applied).toFixed(3)
+                        : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {reading.ro_price_applied !== null && reading.ro_price_applied !== undefined
+                        ? parseFloat(reading.ro_price_applied).toFixed(3)
+                        : 'N/A'}
                     </td>
                   </tr>
                 ))}

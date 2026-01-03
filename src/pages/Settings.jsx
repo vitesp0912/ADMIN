@@ -1,157 +1,222 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { Settings as SettingsIcon, Building2 } from 'lucide-react'
+import { Settings as SettingsIcon, Building2, Fuel, Zap } from 'lucide-react'
 
 export default function Settings() {
-  const [settings, setSettings] = useState([])
-  const [pumps, setPumps] = useState({})
+  const [pumps, setPumps] = useState([])
+  const [selectedPumpId, setSelectedPumpId] = useState(null)
+  const [pumpMetrics, setPumpMetrics] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [metricsLoading, setMetricsLoading] = useState(false)
 
+  // Fetch all pumps on mount
   useEffect(() => {
-    fetchSettings()
+    fetchPumps()
   }, [])
 
-  const fetchSettings = async () => {
+  // Fetch metrics when pump is selected
+  useEffect(() => {
+    if (selectedPumpId) {
+      fetchPumpMetrics(selectedPumpId)
+    } else {
+      setPumpMetrics(null)
+    }
+  }, [selectedPumpId])
+
+  const fetchPumps = async () => {
     try {
       const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .from('pumps')
+        .select('id, name, pump_code, address')
+        .order('pump_code', { ascending: true })
 
       if (error) throw error
 
-      setSettings(data || [])
-
-      // Fetch pump names
-      const pumpIds = [...new Set((data || []).map((s) => s.pump_id))]
-      if (pumpIds.length > 0) {
-        const { data: pumpsData, error: pumpsError } = await supabase
-          .from('pumps')
-          .select('id, name, pump_code')
-          .in('id', pumpIds)
-
-        if (!pumpsError && pumpsData) {
-          const pumpsMap = {}
-          pumpsData.forEach((pump) => {
-            pumpsMap[pump.id] = pump
-          })
-          setPumps(pumpsMap)
-        }
+      setPumps(data || [])
+      
+      // Auto-select first pump
+      if (data && data.length > 0) {
+        setSelectedPumpId(data[0].id)
       }
     } catch (error) {
-      console.error('Error fetching settings:', error)
+      console.error('Error fetching pumps:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading settings...</p>
-        </div>
-      </div>
-    )
+  const fetchPumpMetrics = async (pumpId) => {
+    setMetricsLoading(true)
+    try {
+      // Call the RPC function - single source of truth
+      const { data, error } = await supabase
+        .rpc('get_pump_operational_metrics', { p_pump_id: pumpId })
+
+      if (error) {
+        console.error('Error fetching pump metrics:', error)
+        throw error
+      }
+
+      if (data && data.length > 0) {
+        setPumpMetrics(data[0])
+        console.log('Pump Metrics (from DB):', data[0])
+      } else {
+        setPumpMetrics(null)
+      }
+    } catch (error) {
+      console.error('Error calling get_pump_operational_metrics:', error)
+      setPumpMetrics(null)
+    } finally {
+      setMetricsLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-          <SettingsIcon className="w-8 h-8 text-orange-600" />
-          Settings
-        </h1>
-        <p className="text-gray-600">View pump-specific settings and configurations</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center gap-3">
+            <SettingsIcon className="w-8 h-8 text-blue-600" />
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Pump Settings</h1>
+              <p className="text-gray-600 text-sm mt-1">Real-time operational metrics and fuel pricing</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden hover:shadow-xl transition-shadow duration-300">
-        {settings.length === 0 ? (
-          <div className="p-12 text-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-            <SettingsIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg font-medium">No settings found</p>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-gray-500">Loading pumps...</div>
+          </div>
+        ) : pumps.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-8 text-center">
+            <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No pumps found</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-100 to-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pump
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Diesel RSP
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Petrol RSP
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Diesel RO
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Petrol RO
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Updated
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {settings.map((setting) => (
-                  <tr key={setting.id} className="hover:bg-orange-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {pumps[setting.pump_id] ? (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            {/* Left Sidebar - Pump Selector */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-lg shadow sticky top-8">
+                <div className="p-4 border-b border-gray-200 bg-gray-50">
+                  <h2 className="text-sm font-semibold text-gray-900">SELECT PUMP</h2>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {pumps.map((pump) => (
+                    <button
+                      key={pump.id}
+                      onClick={() => setSelectedPumpId(pump.id)}
+                      className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
+                        selectedPumpId === pump.id
+                          ? 'bg-blue-50 border-l-4 border-l-blue-600'
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="font-medium text-gray-900">{pump.name}</div>
+                      <div className="text-xs text-gray-500 mt-1">{pump.pump_code}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Content - Metrics Detail */}
+            <div className="lg:col-span-3">
+              {metricsLoading ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center">
+                  <div className="text-gray-500">Loading metrics...</div>
+                </div>
+              ) : !pumpMetrics ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center">
+                  <Fuel className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-lg">Select a pump to view metrics</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-l-blue-600">
+                    <h2 className="text-2xl font-bold text-gray-900">{pumpMetrics.pump_name}</h2>
+                    <p className="text-gray-600 mt-1">Code: {pumpMetrics.pump_code}</p>
+                  </div>
+
+                  {/* Operational Counts */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg shadow p-6">
+                      <div className="flex items-end gap-3">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {pumps[setting.pump_id].name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {pumps[setting.pump_id].pump_code}
-                          </div>
+                          <p className="text-gray-600 text-sm font-medium">NOZZLES</p>
+                          <p className="text-4xl font-bold text-blue-600 mt-2">
+                            {pumpMetrics.nozzle_count || 0}
+                          </p>
                         </div>
-                      ) : (
-                        <span className="text-sm text-gray-500">N/A</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ₹{parseFloat(setting.diesel_rsp || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ₹{parseFloat(setting.petrol_rsp || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ₹{parseFloat(setting.diesel_ro || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ₹{parseFloat(setting.petrol_ro || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(setting.updated_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <Zap className="w-8 h-8 text-blue-400 mb-2" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg shadow p-6">
+                      <div className="flex items-end gap-3">
+                        <div>
+                          <p className="text-gray-600 text-sm font-medium">FUEL TYPES</p>
+                          <p className="text-4xl font-bold text-green-600 mt-2">
+                            {pumpMetrics.fuel_type_count || 0}
+                          </p>
+                        </div>
+                        <Fuel className="w-8 h-8 text-green-400 mb-2" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fuel Pricing Table */}
+                  {pumpMetrics.fuel_types && Array.isArray(pumpMetrics.fuel_types) && pumpMetrics.fuel_types.length > 0 ? (
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                      <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                        <h3 className="text-sm font-semibold text-gray-900">FUEL PRICING</h3>
+                      </div>
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Fuel Type</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">RSP</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">RO</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pumpMetrics.fuel_types.map((fuel, idx) => (
+                            <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                              <td className="px-6 py-3 text-sm text-gray-900 font-medium">{fuel.name}</td>
+                              <td className="px-6 py-3 text-sm text-gray-900">
+                                ₹{fuel.rsp ? fuel.rsp.toFixed(2) : 'N/A'}
+                              </td>
+                              <td className="px-6 py-3 text-sm text-gray-900">
+                                ₹{fuel.ro ? fuel.ro.toFixed(2) : 'N/A'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-lg shadow p-8 text-center">
+                      <p className="text-gray-500">No fuel types configured for this pump</p>
+                    </div>
+                  )}
+
+                  {/* Data Integrity Note */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-xs text-blue-700">
+                      <span className="font-semibold">Data Integrity:</span> All metrics displayed here are sourced directly from the database in real-time. 
+                      Nozzle counts, fuel types, and pricing are automatically synced from the pump configuration. 
+                      No cached values or calculations are performed on the frontend.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
-      </div>
-
-      <div className="mt-6 bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl p-6 shadow-md">
-        <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
-          <SettingsIcon className="w-5 h-5" />
-          Settings Explanation
-        </h3>
-        <ul className="text-sm text-blue-800 space-y-2">
-          <li className="flex items-start gap-2">
-            <strong className="text-blue-900">RSP (Retail Selling Price):</strong>
-            <span>Price at which fuel is sold to customers</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <strong className="text-blue-900">RO (Retail Outlet):</strong>
-            <span>Cost price paid to the retail outlet</span>
-          </li>
-        </ul>
       </div>
     </div>
   )

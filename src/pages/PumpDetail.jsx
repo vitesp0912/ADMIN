@@ -24,16 +24,19 @@ export default function PumpDetail() {
   const [users, setUsers] = useState([])
   const [sales, setSales] = useState([])
   const [meterReadings, setMeterReadings] = useState([])
+  const [nozzles, setNozzles] = useState({})
+  const [fuelTypes, setFuelTypes] = useState({})
   const [expenses, setExpenses] = useState([])
   const [dipEntries, setDipEntries] = useState([])
   const [salaryEntries, setSalaryEntries] = useState([])
+  const [dailyTesting, setDailyTesting] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('details')
   const [activeDataTab, setActiveDataTab] = useState('users')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const [dataLoading, setDataLoading] = useState({})
-  
+
   // Management form state
   const [formData, setFormData] = useState({
     is_active: false,
@@ -106,7 +109,7 @@ export default function PumpDetail() {
   }
 
   const fetchTabData = async (tab) => {
-    setDataLoading({ ...dataLoading, [tab]: true })
+    setDataLoading(prev => ({ ...prev, [tab]: true }))
     try {
       switch (tab) {
         case 'sales':
@@ -116,19 +119,46 @@ export default function PumpDetail() {
             .eq('pump_id', id)
             .order('date_time', { ascending: false })
             .limit(500)
-          if (salesError) throw salesError
+          if (salesError) {
+            console.error('Sales fetch error:', salesError)
+            throw salesError
+          }
+          console.log(`Fetched ${salesData?.length || 0} sales records:`, salesData)
           setSales(salesData || [])
+          
+          // Fetch fuel type names for sales
+          const saleFuelTypeIds = [...new Set((salesData || [])
+            .map((s) => s.fuel_type_id)
+            .filter(Boolean))]
+          if (saleFuelTypeIds.length > 0) {
+            await fetchFuelTypes(saleFuelTypeIds)
+          }
           break
 
         case 'meter-readings':
           const { data: readingsData, error: readingsError } = await supabase
-            .from('meter_readings')
+            .from('nozzle_reading')
             .select('*')
             .eq('pump_id', id)
-            .order('date_time', { ascending: false })
+            .order('date', { ascending: false })
             .limit(500)
-          if (readingsError) throw readingsError
+          if (readingsError) {
+            console.error('Meter readings fetch error:', readingsError)
+            throw readingsError
+          }
+          console.log(`Fetched ${readingsData?.length || 0} meter reading records`)
           setMeterReadings(readingsData || [])
+
+          // Fetch nozzle and fuel type names for this pump
+          const nozzleIds = [...new Set((readingsData || []).map((r) => r.nozzle_id))]
+          const fuelTypeIds = [...new Set((readingsData || []).map((r) => r.fuel_type_id))].filter(Boolean)
+
+          if (nozzleIds.length > 0) {
+            await fetchNozzlesForPump(id, nozzleIds)
+          }
+          if (fuelTypeIds.length > 0) {
+            await fetchFuelTypes(fuelTypeIds)
+          }
           break
 
         case 'expenses':
@@ -138,7 +168,11 @@ export default function PumpDetail() {
             .eq('pump_id', id)
             .order('date_time', { ascending: false })
             .limit(500)
-          if (expensesError) throw expensesError
+          if (expensesError) {
+            console.error('Expenses fetch error:', expensesError)
+            throw expensesError
+          }
+          console.log(`Fetched ${expensesData?.length || 0} expenses records:`, expensesData)
           setExpenses(expensesData || [])
           break
 
@@ -149,8 +183,20 @@ export default function PumpDetail() {
             .eq('pump_id', id)
             .order('date_time', { ascending: false })
             .limit(500)
-          if (dipError) throw dipError
+          if (dipError) {
+            console.error('Dip entries fetch error:', dipError)
+            throw dipError
+          }
+          console.log(`Fetched ${dipData?.length || 0} dip entries records:`, dipData)
           setDipEntries(dipData || [])
+          
+          // Fetch fuel type names for dip entries
+          const dipFuelTypeIds = [...new Set((dipData || [])
+            .map((d) => d.fuel_type_id)
+            .filter(Boolean))]
+          if (dipFuelTypeIds.length > 0) {
+            await fetchFuelTypes(dipFuelTypeIds)
+          }
           break
 
         case 'salary-entries':
@@ -160,14 +206,85 @@ export default function PumpDetail() {
             .eq('pump_id', id)
             .order('date_time', { ascending: false })
             .limit(500)
-          if (salaryError) throw salaryError
+          if (salaryError) {
+            console.error('Salary entries fetch error:', salaryError)
+            throw salaryError
+          }
+          console.log(`Fetched ${salaryData?.length || 0} salary entries records:`, salaryData)
           setSalaryEntries(salaryData || [])
+          break
+
+        case 'daily-testing':
+          const { data: testingData, error: testingError } = await supabase
+            .from('daily_testing')
+            .select('*')
+            .eq('pump_id', id)
+            .order('date', { ascending: false })
+            .limit(500)
+          if (testingError) {
+            console.error('Daily testing fetch error:', testingError)
+            throw testingError
+          }
+          console.log(`Fetched ${testingData?.length || 0} daily testing records:`, testingData)
+          setDailyTesting(testingData || [])
+
+          // Fetch fuel type names for daily testing
+          const testingFuelTypeIds = [...new Set((testingData || [])
+            .map((t) => t.fuel_type_id)
+            .filter(Boolean))]
+          if (testingFuelTypeIds.length > 0) {
+            await fetchFuelTypes(testingFuelTypeIds)
+          }
           break
       }
     } catch (error) {
       console.error(`Error fetching ${tab}:`, error)
+      // Show error to user
+      console.log(`Failed to load ${tab}. Error details:`, error.message, error)
     } finally {
-      setDataLoading({ ...dataLoading, [tab]: false })
+      setDataLoading(prev => ({ ...prev, [tab]: false }))
+    }
+  }
+
+  const fetchNozzlesForPump = async (pumpId, nozzleIds) => {
+    try {
+      const { data, error } = await supabase
+        .from('nozzle_info')
+        .select('*')
+        .eq('pump_id', pumpId)
+        .in('nozzle_id', nozzleIds)
+
+      if (error) return console.error('Error fetching nozzle info:', error)
+
+      const map = {}
+      data?.forEach((nozzle) => {
+        const key = `${nozzle.pump_id}:${nozzle.nozzle_id}`
+        map[key] = nozzle
+      })
+      // Merge with existing nozzles instead of replacing
+      setNozzles(prev => ({ ...prev, ...map }))
+    } catch (err) {
+      console.error('Error fetching nozzle info:', err)
+    }
+  }
+
+  const fetchFuelTypes = async (fuelTypeIds) => {
+    try {
+      const { data, error } = await supabase
+        .from('fuel_types')
+        .select('*')
+        .in('id', fuelTypeIds)
+
+      if (error) return console.error('Error fetching fuel types:', error)
+
+      const map = {}
+      data?.forEach((fuel) => {
+        map[fuel.id] = fuel
+      })
+      // Merge with existing fuel types instead of replacing
+      setFuelTypes(prev => ({ ...prev, ...map }))
+    } catch (err) {
+      console.error('Error fetching fuel types:', err)
     }
   }
 
@@ -307,43 +424,46 @@ export default function PumpDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8">
+      {/* Back Navigation */}
       <div className="mb-6">
-      <Link
-        to="/pumps"
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors duration-200 font-medium"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to Pumps
-      </Link>
+        <Link
+          to="/pumps"
+          className="inline-flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors font-medium"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Pumps
+        </Link>
       </div>
 
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6 pb-6 border-b border-gray-200">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{pump.name}</h1>
-            <p className="text-gray-500 flex items-center gap-2">
+      {/* Page Header - Cleaner Status Alignment */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">{pump.name}</h1>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
               <Building2 className="w-4 h-4" />
-              Pump Code: <span className="font-semibold text-gray-700">{pump.pump_code || 'N/A'}</span>
-            </p>
+              <span>Pump Code:</span>
+              <span className="font-medium text-gray-700">{pump.pump_code || 'N/A'}</span>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex items-center gap-3">
             <span
-              className={`px-4 py-2 rounded-full text-sm font-semibold shadow-sm ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
                 pump.is_active
-                  ? 'bg-gradient-to-r from-green-500 to-green-600 text-white'
-                  : 'bg-gray-200 text-gray-700'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : 'bg-gray-100 text-gray-600 border-gray-200'
               }`}
             >
               {pump.is_active ? '✓ Active' : 'Inactive'}
             </span>
             <span
-              className={`px-4 py-2 rounded-full text-sm font-semibold shadow-sm ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
                 pump.registration_status === 'approved'
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
                   : pump.registration_status === 'pending'
-                  ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-white'
-                  : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
+                  ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                  : 'bg-red-50 text-red-700 border-red-200'
               }`}
             >
               {pump.registration_status === 'approved' ? '✓ Approved' : 
@@ -352,95 +472,484 @@ export default function PumpDetail() {
             </span>
           </div>
         </div>
+      </div>
 
-        {/* Two Card Layout */}
-        <div className="grid grid-cols-1 gap-6">
-          {/* Card 1: Details, Subscription, Management */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-shadow duration-300">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Settings className="w-6 h-6 text-blue-600" />
-              Pump Information
-            </h2>
+      {/* Main Content - 70/30 Split */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8 items-start">
+        {/* LEFT COLUMN - Pump Data (70%) */}
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Section Header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-indigo-600" />
+                Pump Data
+              </h2>
+            </div>
             
-            {/* Tabs for Card 1 */}
-        <div className="border-b border-gray-200 mb-6">
-              <nav className="flex gap-2">
+            {/* Tabs - Clean, No Horizontal Scroll */}
+            <div className="border-b border-gray-200 bg-white">
+              <nav className="flex flex-wrap px-6">
+                {[
+                  { id: 'users', label: 'Users' },
+                  { id: 'sales', label: 'Digital Sales' },
+                  { id: 'meter-readings', label: 'Meter Readings' },
+                  { id: 'expenses', label: 'Expenses' },
+                  { id: 'dip-entries', label: 'Dip Entries' },
+                  { id: 'daily-testing', label: 'Daily Testing' },
+                  { id: 'salary-entries', label: 'Salaries' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveDataTab(tab.id)
+                      fetchTabData(tab.id)
+                    }}
+                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                      activeDataTab === tab.id
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6">
+
+            {/* Users Tab */}
+            {activeDataTab === 'users' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
+                  <User className="w-5 h-5 text-purple-600" />
+                  Users ({users.length})
+                </h3>
+                {users.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <User className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No users found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full">
+                      <thead className="bg-gradient-to-r from-gray-100 to-gray-50">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Name
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Phone
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Role
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Last Login
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {users.map((user) => (
+                          <tr key={user.id} className="hover:bg-blue-50 transition-colors">
+                            <td className="px-6 py-3 text-sm font-medium text-gray-900">{user.name || 'N/A'}</td>
+                            <td className="px-6 py-3 text-sm text-gray-600">{user.phone}</td>
+                            <td className="px-6 py-3">
+                              <span className="inline-flex px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-medium">
+                                {user.role ? toTitleCase(user.role) : 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-3">
+                              <span
+                                className={`inline-flex px-2 py-1 rounded text-xs font-medium ${
+                                  user.is_active
+                                    ? 'bg-green-50 text-green-700'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {user.is_active ? '✓ Active' : '✗ Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-3 text-sm text-gray-500">
+                              {user.last_login_at
+                                ? format(new Date(user.last_login_at), 'dd MMM yyyy, HH:mm')
+                                : '—'}
+                            </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            {/* Sales Tab */}
+            {activeDataTab === 'sales' && (
+              <div>
+                {dataLoading['sales'] ? (
+                  <div className="text-center py-8">Loading sales...</div>
+                ) : sales.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No sales found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Liters</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Price/L</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Payment</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {sales.map((sale) => (
+                          <tr key={sale.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">{format(new Date(sale.date_time), 'dd MMM yyyy HH:mm')}</td>
+                            <td className="px-4 py-3 font-medium">{(() => {
+                              const fuel = fuelTypes[sale.fuel_type_id]
+                              return fuel?.name || fuel?.fuel_type || fuel?.title || sale.fuel_type_id || 'N/A'
+                            })()}</td>
+                            <td className="px-4 py-3 font-medium">{sale.liters ? parseFloat(sale.liters).toFixed(2) : 'N/A'}</td>
+                            <td className="px-4 py-3 font-medium">₹{parseFloat(sale.price_per_liter).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-bold">₹{parseFloat(sale.total_amount).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                                {sale.payment_mode ? toTitleCase(sale.payment_mode) : 'N/A'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Meter Readings Tab */}
+            {activeDataTab === 'meter-readings' && (
+              <div>
+                {dataLoading['meter-readings'] ? (
+                  <div className="text-center py-8">Loading meter readings...</div>
+                ) : meterReadings.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Gauge className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No meter readings found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Nozzle</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Opening</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Closing</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Sales (L)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">RSP Applied</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">RO Price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {meterReadings.map((reading) => (
+                          <tr key={reading.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">{format(new Date(reading.date), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3 font-medium">{(() => {
+                              const key = `${reading.pump_id}:${reading.nozzle_id}`
+                              const nozzle = nozzles[key]
+                              return nozzle?.nozzle_name || nozzle?.name || reading.nozzle_id || 'N/A'
+                            })()}</td>
+                            <td className="px-4 py-3 font-medium">{(() => {
+                              const fuel = fuelTypes[reading.fuel_type_id]
+                              return fuel?.name || fuel?.fuel_type || fuel?.title || reading.fuel_type_id || 'N/A'
+                            })()}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(reading.opening_reading).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(reading.closing_reading).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-bold">{parseFloat(reading.sales).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-medium">₹{parseFloat(reading.rsp_applied).toFixed(3)}</td>
+                            <td className="px-4 py-3 font-medium">₹{parseFloat(reading.ro_price_applied).toFixed(3)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Expenses Tab */}
+            {activeDataTab === 'expenses' && (
+              <div>
+                {dataLoading['expenses'] ? (
+                  <div className="text-center py-8">Loading expenses...</div>
+                ) : expenses.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Receipt className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No expenses found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Category</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Description</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Payment</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {expenses.map((expense) => (
+                          <tr key={expense.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">{format(new Date(expense.date_time), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3 font-medium">{expense.category ? toTitleCase(expense.category) : 'N/A'}</td>
+                            <td className="px-4 py-3">{expense.description || '—'}</td>
+                            <td className="px-4 py-3 font-bold text-red-600">₹{parseFloat(expense.amount).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                                {expense.payment_mode ? toTitleCase(expense.payment_mode) : 'N/A'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Dip Entries Tab */}
+            {activeDataTab === 'dip-entries' && (
+              <div>
+                {dataLoading['dip-entries'] ? (
+                  <div className="text-center py-8">Loading dip entries...</div>
+                ) : dipEntries.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Droplets className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No dip entries found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Tank No</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Dip (cm)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Stock (L)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Delivered (L)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Consumed (L)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {dipEntries.map((entry) => (
+                          <tr key={entry.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">{format(new Date(entry.date), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3 font-medium">{(() => {
+                              const fuel = fuelTypes[entry.fuel_type_id]
+                              return fuel?.name || fuel?.fuel_type || fuel?.title || entry.fuel_type_id || 'N/A'
+                            })()}</td>
+                            <td className="px-4 py-3">{entry.tank_no || 'N/A'}</td>
+                            <td className="px-4 py-3">{parseFloat(entry.dip || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(entry.stock || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(entry.delivered || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(entry.consumed || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Daily Testing Tab */}
+            {activeDataTab === 'daily-testing' && (
+              <div>
+                {dataLoading['daily-testing'] ? (
+                  <div className="text-center py-8">Loading daily testing...</div>
+                ) : dailyTesting.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Gauge className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No daily testing records found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Testing Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {dailyTesting.map((entry) => (
+                          <tr key={entry.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">{format(new Date(entry.date), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3 font-medium">{(() => {
+                              const fuel = fuelTypes[entry.fuel_type_id]
+                              return fuel?.name || fuel?.fuel_type || fuel?.title || entry.fuel_type_id || 'N/A'
+                            })()}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(entry.testing_amount || 0).toFixed(3)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Salary Entries Tab */}
+            {activeDataTab === 'salary-entries' && (
+              <div>
+                {dataLoading['salary-entries'] ? (
+                  <div className="text-center py-8">Loading salary entries...</div>
+                ) : salaryEntries.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <DollarSign className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No salary entries found for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Employee Name</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Daily Wage</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Bonus</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Deduction</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Total Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {salaryEntries.map((entry) => (
+                          <tr key={entry.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">{format(new Date(entry.date_time), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3 font-medium">{entry.name ? toTitleCase(entry.name) : 'N/A'}</td>
+                            <td className="px-4 py-3 font-medium">{entry.role ? toTitleCase(entry.role) : 'N/A'}</td>
+                            <td className="px-4 py-3">₹{parseFloat(entry.daily_wage || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3">₹{parseFloat(entry.bonus || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3">₹{parseFloat(entry.deduction || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 font-medium">₹{parseFloat(entry.total_amount || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN - Pump Information (30%) */}
+        <div className="lg:sticky lg:top-6 space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Section Header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-indigo-600" />
+                Pump Information
+              </h2>
+            </div>
+            
+            {/* Tabs */}
+            <div className="border-b border-gray-200 bg-white">
+              <nav className="flex px-6">
                 {[
                   { id: 'details', label: 'Details' },
                   { id: 'subscription', label: 'Subscription' },
                   { id: 'management', label: 'Management' },
                 ].map((tab) => (
-              <button
+                  <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`pb-3 px-4 border-b-2 font-semibold transition-all duration-200 ${
+                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
                       activeTab === tab.id
-                        ? 'border-blue-600 text-blue-600 bg-blue-50 rounded-t-lg'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-t-lg'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
                   >
                     {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+                  </button>
+                ))}
+              </nav>
+            </div>
 
-            {message.text && (
-              <div
-                className={`mb-6 p-4 rounded-lg border-2 shadow-sm ${
-                  message.type === 'success'
-                    ? 'bg-gradient-to-r from-green-50 to-green-100 text-green-800 border-green-300'
-                    : 'bg-gradient-to-r from-red-50 to-red-100 text-red-800 border-red-300'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {message.type === 'success' ? (
-                    <CheckCircle className="w-5 h-5" />
-                  ) : (
-                    <XCircle className="w-5 h-5" />
-                  )}
-                  <span className="font-medium">{message.text}</span>
-                </div>
-              </div>
-            )}
+            {/* Tab Content */}
+            <div className="p-6">
 
-        {/* Details Tab */}
-        {activeTab === 'details' && (
-              <div className="space-y-8">
-                <div className="space-y-5">
-                  <h3 className="text-lg font-bold text-gray-900 mb-5 pb-2 border-b border-gray-200">Basic Information</h3>
-              
-              <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Building2 className="w-5 h-5 text-blue-600" />
+              {message.text && (
+                <div
+                  className={`mb-4 p-3 rounded-lg border ${
+                    message.type === 'success'
+                      ? 'bg-green-50 text-green-800 border-green-200'
+                      : 'bg-red-50 text-red-800 border-red-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {message.type === 'success' ? (
+                      <CheckCircle className="w-4 h-4" />
+                    ) : (
+                      <XCircle className="w-4 h-4" />
+                    )}
+                    <span className="text-sm font-medium">{message.text}</span>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Pump Name</p>
-                  <p className="font-semibold text-gray-900">{pump.name}</p>
-                </div>
-              </div>
+              )}
 
-              <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <MapPin className="w-5 h-5 text-purple-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Address</p>
-                  <p className="font-semibold text-gray-900">{pump.address || 'N/A'}</p>
-                  {pump.city && <p className="text-sm text-gray-600 mt-1">{pump.city}, {pump.state}</p>}
-                  {pump.pincode && <p className="text-sm text-gray-600 mt-1">PIN: {pump.pincode}</p>}
-                </div>
-              </div>
+              {/* Details Tab */}
+              {activeTab === 'details' && (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Basic Information</h3>
+                
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Building2 className="w-4 h-4 text-gray-400" />
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">Pump Name</p>
+                          <p className="text-sm font-medium text-gray-900">{pump.name}</p>
+                        </div>
+                      </div>
 
-              <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <Phone className="w-5 h-5 text-green-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Phone</p>
-                  <p className="font-semibold text-gray-900">{pump.phone}</p>
-                </div>
-              </div>
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">Address</p>
+                          <p className="text-sm font-medium text-gray-900">{pump.address || 'N/A'}</p>
+                          {pump.city && <p className="text-xs text-gray-600 mt-0.5">{pump.city}, {pump.state}</p>}
+                          {pump.pincode && <p className="text-xs text-gray-600">PIN: {pump.pincode}</p>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">Phone</p>
+                          <p className="text-sm font-medium text-gray-900">{pump.phone}</p>
+                        </div>
+                      </div>
 
               {pump.email && (
                 <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
@@ -538,12 +1047,13 @@ export default function PumpDetail() {
                   )}
                 </div>
               </div>
+              </div>
             </div>
           </div>
         )}
 
-            {/* Subscription Tab */}
-            {activeTab === 'subscription' && (
+              {/* Subscription Tab */}
+              {activeTab === 'subscription' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-lg">
@@ -588,8 +1098,8 @@ export default function PumpDetail() {
               </div>
             )}
 
-            {/* Management Tab */}
-            {activeTab === 'management' && (
+              {/* Management Tab */}
+              {activeTab === 'management' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   {pump.registration_status === 'pending' && (
@@ -737,412 +1247,14 @@ export default function PumpDetail() {
                   >
                     <Save className="w-4 h-4" />
                     {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
+                    </button>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Card 2: Users, Sales, Meter Readings, Expenses, Dip Entries, Salaries */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-shadow duration-300">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <ShoppingCart className="w-6 h-6 text-purple-600" />
-              Pump Data
-            </h2>
-            
-            {/* Tabs for Card 2 */}
-            <div className="border-b border-gray-200 mb-6">
-              <nav className="flex gap-2 overflow-x-auto pb-1">
-                {[
-                  { id: 'users', label: 'Users' },
-                  { id: 'sales', label: 'Sales' },
-                  { id: 'meter-readings', label: 'Meter Readings' },
-                  { id: 'expenses', label: 'Expenses' },
-                  { id: 'dip-entries', label: 'Dip Entries' },
-                  { id: 'salary-entries', label: 'Salaries' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveDataTab(tab.id)
-                      fetchTabData(tab.id)
-                    }}
-                    className={`pb-3 px-4 border-b-2 font-semibold transition-all duration-200 whitespace-nowrap ${
-                      activeDataTab === tab.id
-                        ? 'border-purple-600 text-purple-600 bg-purple-50 rounded-t-lg'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-t-lg'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            {/* Users Tab */}
-            {activeDataTab === 'users' && (
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-                  <User className="w-5 h-5 text-purple-600" />
-                  Users ({users.length})
-                </h3>
-                {users.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                    <User className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-gray-500 font-medium">No users found for this pump</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
-                    <table className="w-full">
-                      <thead className="bg-gradient-to-r from-gray-100 to-gray-50">
-                        <tr>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Name
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Phone
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Role
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Status
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Last Login
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {users.map((user) => (
-                          <tr key={user.id} className="hover:bg-blue-50 transition-colors">
-                            <td className="px-6 py-4 font-medium text-gray-900">{user.name || 'N/A'}</td>
-                            <td className="px-6 py-4 text-gray-700">{user.phone}</td>
-                            <td className="px-6 py-4">
-                              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                                {user.role ? toTitleCase(user.role) : 'N/A'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span
-                                className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                                  user.is_active
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}
-                              >
-                                {user.is_active ? '✓ Active' : '✗ Inactive'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {user.last_login_at
-                                ? new Date(user.last_login_at).toLocaleString()
-                                : 'Never'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Sales Tab */}
-            {activeDataTab === 'sales' && (
-              <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Sales Transactions</h3>
-            {dataLoading['sales'] ? (
-              <div className="text-center py-8">Loading sales...</div>
-            ) : sales.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <ShoppingCart className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p>No sales found for this pump</p>
-              </div>
-            ) : (
-              <>
-                <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Total Transactions</p>
-                    <p className="text-2xl font-bold text-gray-800">{sales.length}</p>
-                  </div>
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Total Amount</p>
-                    <p className="text-2xl font-bold text-gray-800">
-                      ₹{sales.reduce((sum, s) => sum + (parseFloat(s.total_amount) || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Total Liters</p>
-                    <p className="text-2xl font-bold text-gray-800">
-                      {sales.reduce((sum, s) => sum + (parseFloat(s.liters) || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })} L
-                    </p>
-                  </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Nozzle</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Liters</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Price/L</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Payment</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Customer</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {sales.map((sale) => (
-                        <tr key={sale.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">{format(new Date(sale.date_time), 'dd MMM yyyy HH:mm')}</td>
-                          <td className="px-4 py-3 font-medium">{sale.shift ? toTitleCase(sale.shift) : 'N/A'}</td>
-                          <td className="px-4 py-3 font-medium">{sale.nozzle || 'N/A'}</td>
-                          <td className="px-4 py-3 font-medium">{sale.fuel_type ? toTitleCase(sale.fuel_type) : 'N/A'}</td>
-                          <td className="px-4 py-3 font-medium">{sale.liters ? parseFloat(sale.liters).toFixed(2) : 'N/A'}</td>
-                          <td className="px-4 py-3 font-medium">₹{parseFloat(sale.price_per_liter).toFixed(2)}</td>
-                          <td className="px-4 py-3 font-bold">₹{parseFloat(sale.total_amount).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                              {sale.payment_mode ? toTitleCase(sale.payment_mode) : 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium">{sale.customer_name ? toTitleCase(sale.customer_name) : 'N/A'}</div>
-                            {sale.vehicle_number && <div className="text-xs text-gray-500 font-medium">{sale.vehicle_number.toUpperCase()}</div>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-              )}
-              </div>
-            )}
-
-            {/* Meter Readings Tab */}
-            {activeDataTab === 'meter-readings' && (
-              <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Meter Readings</h3>
-            {dataLoading['meter-readings'] ? (
-              <div className="text-center py-8">Loading meter readings...</div>
-            ) : meterReadings.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Gauge className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p>No meter readings found for this pump</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Nozzle</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Reading Type</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Reading Value</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Difference</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {meterReadings.map((reading) => (
-                      <tr key={reading.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">{format(new Date(reading.date_time), 'dd MMM yyyy HH:mm')}</td>
-                        <td className="px-4 py-3">{reading.shift}</td>
-                        <td className="px-4 py-3">{reading.nozzle}</td>
-                        <td className="px-4 py-3">{reading.fuel_type}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            reading.reading_type === 'start' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {reading.reading_type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-medium">{parseFloat(reading.reading_value).toFixed(2)}</td>
-                        <td className="px-4 py-3">{reading.difference ? parseFloat(reading.difference).toFixed(2) : 'N/A'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              )}
-              </div>
-            )}
-
-            {/* Expenses Tab */}
-            {activeDataTab === 'expenses' && (
-              <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Expenses</h3>
-            {dataLoading['expenses'] ? (
-              <div className="text-center py-8">Loading expenses...</div>
-            ) : expenses.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Receipt className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p>No expenses found for this pump</p>
-              </div>
-            ) : (
-              <>
-                <div className="mb-4 bg-red-50 p-4 rounded-lg inline-block">
-                  <p className="text-sm text-gray-600">Total Expenses</p>
-                  <p className="text-2xl font-bold text-gray-800">
-                    ₹{expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Category</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Description</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Payment Mode</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {expenses.map((expense) => (
-                        <tr key={expense.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">{format(new Date(expense.date_time), 'dd MMM yyyy HH:mm')}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
-                              {expense.category ? toTitleCase(expense.category) : 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-medium">{expense.description ? toTitleCase(expense.description) : 'N/A'}</td>
-                          <td className="px-4 py-3 font-bold">₹{parseFloat(expense.amount).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                              {expense.payment_mode ? toTitleCase(expense.payment_mode) : 'N/A'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-              )}
-              </div>
-            )}
-
-            {/* Dip Entries Tab */}
-            {activeDataTab === 'dip-entries' && (
-              <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Dip Entries</h3>
-            {dataLoading['dip-entries'] ? (
-              <div className="text-center py-8">Loading dip entries...</div>
-            ) : dipEntries.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Droplets className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p>No dip entries found for this pump</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Tank</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Dip (cm)</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Calculated Liters</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-700">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {dipEntries.map((entry) => (
-                      <tr key={entry.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">{format(new Date(entry.date_time), 'dd MMM yyyy HH:mm')}</td>
-                        <td className="px-4 py-3 font-medium">{entry.tank ? toTitleCase(entry.tank) : 'N/A'}</td>
-                        <td className="px-4 py-3 font-medium">{entry.shift ? toTitleCase(entry.shift) : 'N/A'}</td>
-                        <td className="px-4 py-3">{parseFloat(entry.dip_in_cm).toFixed(2)} cm</td>
-                        <td className="px-4 py-3 font-medium">
-                          {entry.calculated_liters ? `${parseFloat(entry.calculated_liters).toFixed(2)} L` : 'N/A'}
-                        </td>
-                        <td className="px-4 py-3">{entry.notes || 'N/A'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              )}
-              </div>
-            )}
-
-            {/* Salary Entries Tab */}
-            {activeDataTab === 'salary-entries' && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Salary Entries</h3>
-            {dataLoading['salary-entries'] ? (
-              <div className="text-center py-8">Loading salary entries...</div>
-            ) : salaryEntries.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <DollarSign className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p>No salary entries found for this pump</p>
-              </div>
-            ) : (
-              <>
-                <div className="mb-4 bg-green-50 p-4 rounded-lg inline-block">
-                  <p className="text-sm text-gray-600">Total Salary Paid</p>
-                  <p className="text-2xl font-bold text-gray-800">
-                    ₹{salaryEntries.reduce((sum, e) => sum + (parseFloat(e.total_amount) || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Employee Name</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Status</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Daily Wage</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Bonus</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Deduction</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-700">Total Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {salaryEntries.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">{format(new Date(entry.date_time), 'dd MMM yyyy')}</td>
-                          <td className="px-4 py-3 font-medium">{entry.name ? toTitleCase(entry.name) : 'N/A'}</td>
-                          <td className="px-4 py-3 font-medium">{entry.role ? toTitleCase(entry.role) : 'N/A'}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                entry.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {entry.is_active ? 'Active' : 'Inactive'}
-                              </span>
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                entry.is_present ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'
-                              }`}>
-                                {entry.is_present ? 'Present' : 'Absent'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">₹{parseFloat(entry.daily_wage || 0).toFixed(2)}</td>
-                          <td className="px-4 py-3">₹{parseFloat(entry.bonus || 0).toFixed(2)}</td>
-                          <td className="px-4 py-3">₹{parseFloat(entry.deduction || 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 font-medium">₹{parseFloat(entry.total_amount || 0).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-              </div>
             )}
           </div>
         </div>
       </div>
     </div>
+    </div>
   )
 }
-
