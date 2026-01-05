@@ -18,9 +18,11 @@ CREATE OR REPLACE FUNCTION get_error_logs(
 RETURNS TABLE (
   id uuid,
   user_id uuid,
+  user_name text,
   phone text,
   pump_id uuid,
   pump_name text,
+  pump_code text,
   error_type text,
   error_type_label text,
   error_code text,
@@ -43,9 +45,24 @@ BEGIN
   SELECT 
     ea.id,
     ea.user_id,
+    -- Get user name: try users table first, then fallback to phone
+    COALESCE(
+      (SELECT u.name FROM users u WHERE u.id = ea.user_id LIMIT 1),
+      (SELECT au.raw_user_meta_data->>'name' FROM auth.users au WHERE au.id = ea.user_id LIMIT 1),
+      (SELECT au.raw_user_meta_data->>'full_name' FROM auth.users au WHERE au.id = ea.user_id LIMIT 1),
+      ea.phone,
+      'Unknown User'
+    )::text as user_name,
     ea.phone,
     ea.pump_id,
-    ea.pump_name,
+    -- Get pump name: try pump_name field first, then lookup from pumps table
+    COALESCE(
+      ea.pump_name,
+      (SELECT p.name FROM pumps p WHERE p.id = ea.pump_id LIMIT 1),
+      'Unknown Pump'
+    )::text as pump_name,
+    -- Get pump code: try pumps table, fallback to NULL
+    (SELECT p.pump_code FROM pumps p WHERE p.id = ea.pump_id LIMIT 1)::text as pump_code,
     ea.error_type,
     -- Human-readable error type
     CASE ea.error_type

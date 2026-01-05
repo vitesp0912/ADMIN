@@ -319,6 +319,19 @@ export default function ErrorLogs() {
           </p>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
+              <span className="text-slate-500">User</span>
+              <p className="text-slate-700 font-medium">{log.user_name || 'Unknown'}</p>
+            </div>
+            <div>
+              <span className="text-slate-500">Pump</span>
+              <p className="text-slate-700 font-medium">
+                {log.pump_name || 'Unknown'}
+                {log.pump_code && (
+                  <span className="ml-2 text-xs text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded">{log.pump_code}</span>
+                )}
+              </p>
+            </div>
+            <div>
               <span className="text-slate-500">Timestamp</span>
               <p className="text-slate-700 font-medium">{formatFullTimestamp(log.created_at)}</p>
             </div>
@@ -330,12 +343,6 @@ export default function ErrorLogs() {
               <div>
                 <span className="text-slate-500">Action Attempted</span>
                 <p className="text-slate-700 font-medium">{log.action_attempted}</p>
-              </div>
-            )}
-            {log.pump_name && (
-              <div>
-                <span className="text-slate-500">Pump</span>
-                <p className="text-slate-700 font-medium">{log.pump_name}</p>
               </div>
             )}
             {log.phone && (
@@ -612,22 +619,30 @@ export default function ErrorLogs() {
                         {log.error_message}
                       </p>
 
+                      {/* User & Pump Info */}
+                      <div className="flex items-center gap-3 mt-3 text-sm">
+                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                          <User className="w-3.5 h-3.5" />
+                          <span className="font-medium">{log.user_name || log.phone || 'Unknown'}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 px-2 py-1 rounded">
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span className="font-medium">{log.pump_name || 'Unknown Pump'}</span>
+                          {log.pump_code && (
+                            <span className="ml-2 text-xs text-amber-700 font-mono bg-amber-100 px-2 py-0.5 rounded">{log.pump_code}</span>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Meta Info */}
-                      <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 flex-wrap">
+                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5" />
                           <span>{formatTime(log.created_at)}</span>
                         </div>
-                        {log.pump_name && (
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5" />
-                            <span>{log.pump_name}</span>
-                          </div>
-                        )}
-                        {log.phone && (
-                          <div className="flex items-center gap-1.5">
-                            <User className="w-3.5 h-3.5" />
-                            <span>{log.phone}</span>
+                        {log.phone && log.user_name && log.user_name !== log.phone && (
+                          <div className="flex items-center gap-1.5 text-gray-400">
+                            <span>({log.phone})</span>
                           </div>
                         )}
                         {log.app_version && (
