@@ -13,6 +13,7 @@ import SalaryEntries from './pages/SalaryEntries'
 import DipEntries from './pages/DipEntries'
 import Settings from './pages/Settings'
 import AuditLogs from './pages/AuditLogs'
+import ErrorLogs from './pages/ErrorLogs'
 import Layout from './components/Layout'
 
 function App() {
@@ -63,6 +64,7 @@ function App() {
           <Route path="dip-entries" element={<DipEntries />} />
           <Route path="settings" element={<Settings />} />
           <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="error-logs" element={<ErrorLogs />} />
         </Route>
       </Routes>
     </Router>

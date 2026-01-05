@@ -12,6 +12,7 @@ import {
   Droplets,
   Settings,
   FileText,
+  AlertTriangle,
   LogOut
 } from 'lucide-react'
 
@@ -36,6 +37,7 @@ export default function Layout() {
     { path: '/dip-entries', icon: Droplets, label: 'Dip Entries' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/audit-logs', icon: FileText, label: 'Activity Log' },
+    { path: '/error-logs', icon: AlertTriangle, label: 'Error Logs' },
   ]
 
   return (
