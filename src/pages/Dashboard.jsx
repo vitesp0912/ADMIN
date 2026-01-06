@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { Building2, Users, ShoppingCart, Receipt, TrendingUp, AlertCircle } from 'lucide-react'
+import { Building2, Users, ShoppingCart, Receipt, TrendingUp, AlertCircle, Bell, ChevronDown, ChevronUp, Mail, Phone, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function Dashboard() {
@@ -14,13 +14,39 @@ export default function Dashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [recentPumps, setRecentPumps] = useState([])
+  // Forgot password requests state
+  const [resetRequests, setResetRequests] = useState([])
+  const [resetLoading, setResetLoading] = useState(true)
+  const [showResetList, setShowResetList] = useState(false)
+  const [clearLoading, setClearLoading] = useState({})
+  // Clear forgot password request for a user
+  const handleClearRequest = async (userId) => {
+    setClearLoading((prev) => ({ ...prev, [userId]: true }))
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ forgot_password_requested: false, forgot_password_requested_at: null })
+        .eq('id', userId)
+      if (!error) {
+        setResetRequests((prev) => prev.filter(u => u.id !== userId))
+      }
+    } finally {
+      setClearLoading((prev) => ({ ...prev, [userId]: false }))
+    }
+  }
 
   useEffect(() => {
     fetchDashboardData()
+    fetchResetRequests()
+    // Optionally, refresh on window focus
+    const onFocus = () => fetchResetRequests()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [])
 
   const fetchDashboardData = async () => {
     try {
+      // ...existing code...
       // Fetch pumps stats
       const { data: pumps, error: pumpsError } = await supabase
         .from('pumps')
@@ -87,6 +113,24 @@ export default function Dashboard() {
     }
   }
 
+  // Fetch forgot password requests
+  const fetchResetRequests = async () => {
+    setResetLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, phone, role, forgot_password_requested_at')
+        .eq('forgot_password_requested', true)
+        .order('forgot_password_requested_at', { ascending: true })
+      if (error) throw error
+      setResetRequests(data || [])
+    } catch (err) {
+      setResetRequests([])
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -145,6 +189,54 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Forgot Password Requests Notification */}
+      <div className="w-full max-w-3xl mx-auto mt-4 mb-4 px-2">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl shadow flex flex-col sm:flex-row items-start sm:items-center gap-2 px-4 py-3 relative">
+          <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => setShowResetList(v => !v)}>
+            <Bell className="w-5 h-5 text-yellow-600" />
+            <span className="font-semibold text-yellow-800 text-sm">
+              {resetRequests.length > 0
+                ? `${resetRequests.length} Password Reset Request${resetRequests.length > 1 ? 's' : ''}`
+                : 'No Password Reset Requests'}
+            </span>
+            {showResetList ? <ChevronUp className="w-4 h-4 text-yellow-600" /> : <ChevronDown className="w-4 h-4 text-yellow-600" />}
+          </div>
+          {showResetList && (
+            <div className="w-full mt-3 sm:mt-0">
+              {resetRequests.length > 0 ? (
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="hidden sm:grid grid-cols-5 gap-2 font-bold text-yellow-900 text-xs sm:text-sm px-2">
+                    <div>Name</div>
+                    <div>Phone</div>
+                    <div>Role</div>
+                    <div>Requested At</div>
+                    <div>Actions</div>
+                  </div>
+                  {resetRequests.map((u) => (
+                    <div key={u.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-yellow-100/60 rounded-lg px-2 py-2 text-xs sm:text-sm">
+                      <div className="flex items-center gap-1"><User className="w-4 h-4 text-gray-400" />{u.name || 'N/A'}</div>
+                      <div className="flex items-center gap-1"><Phone className="w-4 h-4 text-gray-400" />{u.phone || 'N/A'}</div>
+                      <div>{u.role || 'N/A'}</div>
+                      <div>{u.forgot_password_requested_at ? new Date(u.forgot_password_requested_at).toLocaleString() : ''}</div>
+                      <div className="flex gap-2">
+                        <button
+                          className="bg-gray-200 text-gray-700 rounded px-2 py-1 text-xs font-semibold hover:bg-gray-300 transition-all duration-200 disabled:opacity-60"
+                          onClick={() => handleClearRequest(u.id)}
+                          disabled={clearLoading[u.id]}
+                        >
+                          {clearLoading[u.id] ? 'Clearing...' : 'Clear Request'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-yellow-700 text-sm px-2 py-2">No pending password reset requests.</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-900 mb-2">Dashboard</h1>
         <p className="text-gray-600">Overview of your petrol pump management system</p>
