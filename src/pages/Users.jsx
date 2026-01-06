@@ -1,4 +1,22 @@
 import { useState, useEffect } from 'react'
+// Simple responsive modal component
+function Modal({ open, onClose, children }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30 px-2">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 w-full max-w-md relative mx-auto" style={{maxWidth: 400}}>
+        <button
+          className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-xl font-bold"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          ×
+        </button>
+        {children}
+      </div>
+    </div>
+  )
+}
 import { supabase } from '../lib/supabase'
 import { Search, User, Eye } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -23,6 +41,67 @@ export default function Users() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterRole, setFilterRole] = useState('all')
+  // Password modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalUser, setModalUser] = useState(null)
+  const [modalPassword, setModalPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
+  const [closeTimeout, setCloseTimeout] = useState(null)
+
+  const openPasswordModal = (user) => {
+    setModalUser(user)
+    setModalPassword('')
+    setPasswordError('')
+    setPasswordSuccess('')
+    setShowPassword(false)
+    setModalOpen(true)
+  }
+  const closePasswordModal = () => {
+    setModalOpen(false)
+    setModalUser(null)
+    setModalPassword('')
+    setPasswordError('')
+    setPasswordSuccess('')
+    setShowPassword(false)
+    if (closeTimeout) {
+      clearTimeout(closeTimeout)
+      setCloseTimeout(null)
+    }
+  }
+
+  const handleSetPassword = async () => {
+    if (!modalPassword || modalPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters.')
+      return
+    }
+    setPasswordLoading(true)
+    setPasswordError('')
+    setPasswordSuccess('')
+    try {
+      const { error } = await supabase.rpc('set_user_password', {
+        p_user_id: modalUser.id,
+        p_new_password: modalPassword
+      })
+      if (error) {
+        setPasswordError(error.message || 'Failed to set password.')
+      } else {
+        setPasswordSuccess('Password set successfully!')
+        setModalPassword('')
+        // Auto-close modal after short delay
+        const timeout = setTimeout(() => {
+          closePasswordModal()
+        }, 1200)
+        setCloseTimeout(timeout)
+      }
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to set password.')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchUsers()
@@ -87,7 +166,7 @@ export default function Users() {
     )
   }
 
-  const roles = ['owner', 'dealer', 'manager', 'operator', 'fsm']
+  const roles = ['dealer', 'manager', 'fsm']
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -217,7 +296,61 @@ export default function Users() {
                         <Eye className="w-4 h-4" />
                         View Pump
                       </Link>
+                      <button
+                        className="ml-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded px-3 py-1 text-xs font-semibold shadow-md hover:shadow-lg transition-all duration-200"
+                        onClick={() => openPasswordModal(user)}
+                      >
+                        Set Password
+                      </button>
                     </td>
+                        {/* Password Modal */}
+                        <Modal open={modalOpen} onClose={closePasswordModal}>
+                          <h2 className="text-lg font-bold mb-2 text-gray-900">Set Password for {modalUser?.name || modalUser?.phone}</h2>
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                            <div className="relative flex items-center">
+                              <input
+                                type={showPassword ? 'text' : 'password'}
+                                className="border border-gray-300 rounded-lg px-3 py-2 w-full pr-10 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-base"
+                                placeholder="Enter new password"
+                                value={modalPassword}
+                                onChange={e => setModalPassword(e.target.value)}
+                                disabled={passwordLoading}
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                className="absolute right-2 text-gray-400 hover:text-gray-700"
+                                onClick={() => setShowPassword(v => !v)}
+                                tabIndex={-1}
+                              >
+                                {showPassword ? (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.956 9.956 0 012.042-3.368m3.087-2.933A9.956 9.956 0 0112 5c4.478 0 8.268 2.943 9.542 7a9.956 9.956 0 01-4.043 5.293M15 12a3 3 0 11-6 0 3 3 0 016 0zm6 6l-6-6" /></svg>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          {passwordError && <div className="text-sm text-red-600 mb-2">{passwordError}</div>}
+                          {passwordSuccess && <div className="text-sm text-green-600 mb-2">{passwordSuccess}</div>}
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded px-4 py-2 font-semibold shadow-md hover:shadow-lg transition-all duration-200 disabled:opacity-60"
+                              onClick={handleSetPassword}
+                              disabled={passwordLoading}
+                            >
+                              {passwordLoading ? 'Setting...' : 'Set Password'}
+                            </button>
+                            <button
+                              className="bg-gray-200 text-gray-700 rounded px-4 py-2 font-semibold hover:bg-gray-300 transition-all duration-200"
+                              onClick={closePasswordModal}
+                              disabled={passwordLoading}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </Modal>
                   </tr>
                 ))}
               </tbody>
