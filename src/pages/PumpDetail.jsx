@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Droplets } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen } from 'lucide-react'
 import { format } from 'date-fns'
 
 // Helper function to convert text to Title Case
@@ -27,10 +27,41 @@ export default function PumpDetail() {
   const [nozzles, setNozzles] = useState({})
   const [fuelTypes, setFuelTypes] = useState({})
   const [expenses, setExpenses] = useState([])
-  const [dipEntries, setDipEntries] = useState([])
-  const [salaryEntries, setSalaryEntries] = useState([])
   const [dailyTesting, setDailyTesting] = useState([])
+  const [inventory, setInventory] = useState([])
+  const [customers, setCustomers] = useState([])
+  const [udharLedger, setUdharLedger] = useState([])
+  const [ledgerCustomers, setLedgerCustomers] = useState({})
+  const [ledgerStaff, setLedgerStaff] = useState({})
   const [loading, setLoading] = useState(true)
+
+  /** Udhar rows grouped by customer; each group sorted newest business date first. */
+  const udharLedgerByCustomer = useMemo(() => {
+    const byCustomer = new Map()
+    for (const row of udharLedger) {
+      const cid = row.customer_id
+      if (!cid) continue
+      if (!byCustomer.has(cid)) byCustomer.set(cid, [])
+      byCustomer.get(cid).push(row)
+    }
+
+    const sortNewestFirst = (a, b) => {
+      const da = a.business_date || ''
+      const db = b.business_date || ''
+      if (da !== db) return db.localeCompare(da)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    }
+
+    const groups = [...byCustomer.entries()].map(([customerId, rows]) => {
+      const sortedRows = [...rows].sort(sortNewestFirst)
+      const cust = ledgerCustomers[customerId]
+      const sortKey = (cust?.name || cust?.phone || customerId).toString().toLowerCase()
+      return { customerId, rows: sortedRows, cust, sortKey }
+    })
+
+    groups.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    return groups
+  }, [udharLedger, ledgerCustomers])
   const [activeTab, setActiveTab] = useState('details')
   const [activeDataTab, setActiveDataTab] = useState('users')
   const [saving, setSaving] = useState(false)
@@ -176,44 +207,6 @@ export default function PumpDetail() {
           setExpenses(expensesData || [])
           break
 
-        case 'dip-entries':
-          const { data: dipData, error: dipError } = await supabase
-            .from('dip_entries')
-            .select('*')
-            .eq('pump_id', id)
-            .order('date_time', { ascending: false })
-            .limit(500)
-          if (dipError) {
-            console.error('Dip entries fetch error:', dipError)
-            throw dipError
-          }
-          console.log(`Fetched ${dipData?.length || 0} dip entries records:`, dipData)
-          setDipEntries(dipData || [])
-          
-          // Fetch fuel type names for dip entries
-          const dipFuelTypeIds = [...new Set((dipData || [])
-            .map((d) => d.fuel_type_id)
-            .filter(Boolean))]
-          if (dipFuelTypeIds.length > 0) {
-            await fetchFuelTypes(dipFuelTypeIds)
-          }
-          break
-
-        case 'salary-entries':
-          const { data: salaryData, error: salaryError } = await supabase
-            .from('salary_entries')
-            .select('*')
-            .eq('pump_id', id)
-            .order('date_time', { ascending: false })
-            .limit(500)
-          if (salaryError) {
-            console.error('Salary entries fetch error:', salaryError)
-            throw salaryError
-          }
-          console.log(`Fetched ${salaryData?.length || 0} salary entries records:`, salaryData)
-          setSalaryEntries(salaryData || [])
-          break
-
         case 'daily-testing':
           const { data: testingData, error: testingError } = await supabase
             .from('daily_testing')
@@ -236,6 +229,94 @@ export default function PumpDetail() {
             await fetchFuelTypes(testingFuelTypeIds)
           }
           break
+
+        case 'inventory':
+          const { data: inventoryData, error: inventoryError } = await supabase
+            .from('inventory')
+            .select('*')
+            .eq('pump_id', id)
+            .order('created_at', { ascending: false })
+            .limit(500)
+          if (inventoryError) {
+            console.error('Inventory fetch error:', inventoryError)
+            throw inventoryError
+          }
+          setInventory(inventoryData || [])
+          break
+
+        case 'customers':
+          const { data: customersData, error: customersError } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('pump_id', id)
+            .order('created_at', { ascending: false })
+            .limit(500)
+          if (customersError) {
+            console.error('Customers fetch error:', customersError)
+            throw customersError
+          }
+          setCustomers(customersData || [])
+          break
+
+        case 'udhar-ledger': {
+          const { data: udharData, error: udharError } = await supabase
+            .from('udhar_ledger')
+            .select('*')
+            .eq('pump_id', id)
+            .order('created_at', { ascending: false })
+            .limit(500)
+          if (udharError) {
+            console.error('Udhar ledger fetch error:', udharError)
+            throw udharError
+          }
+          const rows = udharData || []
+          setUdharLedger(rows)
+          setLedgerCustomers({})
+          setLedgerStaff({})
+          const custIds = [...new Set(rows.map((r) => r.customer_id).filter(Boolean))]
+          const staffIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))]
+          const lookups = []
+          if (custIds.length > 0) {
+            lookups.push(
+              supabase
+                .from('customers')
+                .select('id, name, phone')
+                .in('id', custIds)
+                .then(({ data: cRows, error: cErr }) => {
+                  if (cErr) {
+                    console.error('Ledger customers lookup:', cErr)
+                    return
+                  }
+                  const m = {}
+                  cRows?.forEach((c) => {
+                    m[c.id] = c
+                  })
+                  setLedgerCustomers(m)
+                })
+            )
+          }
+          if (staffIds.length > 0) {
+            lookups.push(
+              supabase
+                .from('users')
+                .select('id, name')
+                .in('id', staffIds)
+                .then(({ data: uRows, error: uErr }) => {
+                  if (uErr) {
+                    console.error('Ledger staff lookup:', uErr)
+                    return
+                  }
+                  const m = {}
+                  uRows?.forEach((u) => {
+                    m[u.id] = u
+                  })
+                  setLedgerStaff(m)
+                })
+            )
+          }
+          await Promise.all(lookups)
+          break
+        }
       }
     } catch (error) {
       console.error(`Error fetching ${tab}:`, error)
@@ -492,12 +573,13 @@ export default function PumpDetail() {
               <nav className="flex flex-wrap px-6">
                 {[
                   { id: 'users', label: 'Users' },
+                  { id: 'inventory', label: 'Inventory' },
+                  { id: 'customers', label: 'Customers' },
+                  { id: 'udhar-ledger', label: 'Udhar ledger' },
                   { id: 'sales', label: 'Digital Sales' },
                   { id: 'meter-readings', label: 'Meter Readings' },
                   { id: 'expenses', label: 'Expenses' },
-                  { id: 'dip-entries', label: 'Dip Entries' },
                   { id: 'daily-testing', label: 'Daily Testing' },
-                  { id: 'salary-entries', label: 'Salaries' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -588,6 +670,233 @@ export default function PumpDetail() {
                   )}
                 </div>
               )}
+
+            {/* Inventory Tab */}
+            {activeDataTab === 'inventory' && (
+              <div>
+                {dataLoading['inventory'] ? (
+                  <div className="text-center py-8">Loading inventory...</div>
+                ) : inventory.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No inventory items for this pump</p>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Package className="w-5 h-5 text-amber-600" />
+                      Stock ({inventory.length})
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Qty</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Cost</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Selling</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Expiry</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Batch</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Added</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {inventory.map((row) => (
+                            <tr key={row.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
+                              <td className="px-4 py-3">{row.quantity}</td>
+                              <td className="px-4 py-3">₹{parseFloat(row.cost_price).toFixed(2)}</td>
+                              <td className="px-4 py-3">
+                                {row.selling_price != null
+                                  ? `₹${parseFloat(row.selling_price).toFixed(2)}`
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3">
+                                {row.expiry_date
+                                  ? format(new Date(row.expiry_date + 'T12:00:00'), 'dd MMM yyyy')
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600">{row.batch_number || '—'}</td>
+                              <td className="px-4 py-3 text-gray-500">
+                                {row.created_at
+                                  ? format(new Date(row.created_at), 'dd MMM yyyy HH:mm')
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Customers Tab */}
+            {activeDataTab === 'customers' && (
+              <div>
+                {dataLoading['customers'] ? (
+                  <div className="text-center py-8">Loading customers...</div>
+                ) : customers.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Users className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No customers for this pump</p>
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Users className="w-5 h-5 text-sky-600" />
+                      Customers ({customers.length})
+                    </h3>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Phone</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Created</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {customers.map((row) => (
+                            <tr key={row.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium text-gray-900">{row.name}</td>
+                              <td className="px-4 py-3 font-mono text-gray-800">{row.phone}</td>
+                              <td className="px-4 py-3 text-gray-500">
+                                {row.created_at
+                                  ? format(new Date(row.created_at), 'dd MMM yyyy HH:mm')
+                                  : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-500">
+                                {row.updated_at
+                                  ? format(new Date(row.updated_at), 'dd MMM yyyy HH:mm')
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Udhar ledger Tab */}
+            {activeDataTab === 'udhar-ledger' && (
+              <div>
+                {dataLoading['udhar-ledger'] ? (
+                  <div className="text-center py-8">Loading transactions...</div>
+                ) : udharLedger.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <BookOpen className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No udhar / credit transactions for this pump</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <h3 className="text-lg font-bold text-gray-900 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <BookOpen className="w-5 h-5 text-violet-600 shrink-0" />
+                      <span>
+                        Transactions ({udharLedger.length})
+                        <span className="font-normal text-gray-500 text-base font-medium">
+                          {' '}
+                          · {udharLedgerByCustomer.length} customer
+                          {udharLedgerByCustomer.length !== 1 ? 's' : ''}
+                        </span>
+                      </span>
+                    </h3>
+                    {udharLedgerByCustomer.map(({ customerId, rows, cust }) => (
+                      <div
+                        key={customerId}
+                        className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm"
+                      >
+                        <div className="px-4 py-3 bg-gradient-to-r from-violet-50 to-indigo-50 border-b border-gray-200 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <Users className="w-4 h-4 text-violet-600 shrink-0" />
+                          <span className="font-semibold text-gray-900">
+                            {cust?.name || 'Unknown customer'}
+                          </span>
+                          {cust?.phone && (
+                            <span className="text-sm font-mono text-gray-600">{cust.phone}</span>
+                          )}
+                          <span className="text-xs text-gray-500 ml-auto">
+                            {rows.length} transaction{rows.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">
+                                  Business date
+                                </th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">Type</th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">
+                                  Recorded by
+                                </th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">Vehicle</th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">Note</th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">Created</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {rows.map((row) => {
+                                const staff = ledgerStaff[row.user_id]
+                                const isCredit = row.entry_type === 'credit'
+                                return (
+                                  <tr key={row.id} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 whitespace-nowrap">
+                                      {row.business_date
+                                        ? format(
+                                            new Date(row.business_date + 'T12:00:00'),
+                                            'dd MMM yyyy'
+                                          )
+                                        : '—'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
+                                          isCredit
+                                            ? 'bg-amber-100 text-amber-900'
+                                            : 'bg-emerald-100 text-emerald-800'
+                                        }`}
+                                      >
+                                        {row.entry_type
+                                          ? toTitleCase(row.entry_type)
+                                          : '—'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 font-semibold">
+                                      ₹{parseFloat(row.amount).toFixed(2)}
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-800">{staff?.name || '—'}</td>
+                                    <td className="px-4 py-3 font-mono text-gray-700">
+                                      {row.vehicle_number || '—'}
+                                    </td>
+                                    <td
+                                      className="px-4 py-3 text-gray-600 max-w-[180px] truncate"
+                                      title={row.note || ''}
+                                    >
+                                      {row.note || '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                                      {row.created_at
+                                        ? format(new Date(row.created_at), 'dd MMM yyyy HH:mm')
+                                        : '—'}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Sales Tab */}
             {activeDataTab === 'sales' && (
@@ -732,52 +1041,6 @@ export default function PumpDetail() {
               </div>
             )}
 
-            {/* Dip Entries Tab */}
-            {activeDataTab === 'dip-entries' && (
-              <div>
-                {dataLoading['dip-entries'] ? (
-                  <div className="text-center py-8">Loading dip entries...</div>
-                ) : dipEntries.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                    <Droplets className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-gray-500 font-medium">No dip entries found for this pump</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Tank No</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Dip (cm)</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Stock (L)</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Delivered (L)</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Consumed (L)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {dipEntries.map((entry) => (
-                          <tr key={entry.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{format(new Date(entry.date), 'dd MMM yyyy')}</td>
-                            <td className="px-4 py-3 font-medium">{(() => {
-                              const fuel = fuelTypes[entry.fuel_type_id]
-                              return fuel?.name || fuel?.fuel_type || fuel?.title || entry.fuel_type_id || 'N/A'
-                            })()}</td>
-                            <td className="px-4 py-3">{entry.tank_no || 'N/A'}</td>
-                            <td className="px-4 py-3">{parseFloat(entry.dip || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 font-medium">{parseFloat(entry.stock || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 font-medium">{parseFloat(entry.delivered || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 font-medium">{parseFloat(entry.consumed || 0).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Daily Testing Tab */}
             {activeDataTab === 'daily-testing' && (
               <div>
@@ -807,49 +1070,6 @@ export default function PumpDetail() {
                               return fuel?.name || fuel?.fuel_type || fuel?.title || entry.fuel_type_id || 'N/A'
                             })()}</td>
                             <td className="px-4 py-3 font-medium">{parseFloat(entry.testing_amount || 0).toFixed(3)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Salary Entries Tab */}
-            {activeDataTab === 'salary-entries' && (
-              <div>
-                {dataLoading['salary-entries'] ? (
-                  <div className="text-center py-8">Loading salary entries...</div>
-                ) : salaryEntries.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                    <DollarSign className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-gray-500 font-medium">No salary entries found for this pump</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Employee Name</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Daily Wage</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Bonus</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Deduction</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Total Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {salaryEntries.map((entry) => (
-                          <tr key={entry.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{format(new Date(entry.date_time), 'dd MMM yyyy')}</td>
-                            <td className="px-4 py-3 font-medium">{entry.name ? toTitleCase(entry.name) : 'N/A'}</td>
-                            <td className="px-4 py-3 font-medium">{entry.role ? toTitleCase(entry.role) : 'N/A'}</td>
-                            <td className="px-4 py-3">₹{parseFloat(entry.daily_wage || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3">₹{parseFloat(entry.bonus || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3">₹{parseFloat(entry.deduction || 0).toFixed(2)}</td>
-                            <td className="px-4 py-3 font-medium">₹{parseFloat(entry.total_amount || 0).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>

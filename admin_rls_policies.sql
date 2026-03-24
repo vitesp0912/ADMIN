@@ -17,6 +17,12 @@ CREATE POLICY "Authenticated users can update pumps" ON pumps
   USING (auth.role() = 'authenticated')
   WITH CHECK (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated users can delete pumps" ON pumps;
+
+CREATE POLICY "Authenticated users can delete pumps" ON pumps
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
 -- Option 2: Allow users with admin role to update pumps
 -- Use this if you have a role-based system
 -- First, you need to add a role column to auth.users or use user metadata
@@ -139,6 +145,90 @@ CREATE POLICY "Authenticated users can select salary_entries" ON salary_entries
   USING (auth.role() = 'authenticated');
 
 -- ============================================
+-- Admin Panel RLS Policies for Inventory Table
+-- ============================================
+-- Requires: public.inventory created (see inventory_table.sql)
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select inventory" ON inventory;
+DROP POLICY IF EXISTS "Authenticated users can insert inventory" ON inventory;
+DROP POLICY IF EXISTS "Authenticated users can update inventory" ON inventory;
+DROP POLICY IF EXISTS "Authenticated users can delete inventory" ON inventory;
+
+CREATE POLICY "Authenticated users can select inventory" ON inventory
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert inventory" ON inventory
+  FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update inventory" ON inventory
+  FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete inventory" ON inventory
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- Admin Panel RLS Policies for Customers Table
+-- ============================================
+-- Requires: public.customers created (see customers_table.sql)
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select customers" ON customers;
+DROP POLICY IF EXISTS "Authenticated users can insert customers" ON customers;
+DROP POLICY IF EXISTS "Authenticated users can update customers" ON customers;
+DROP POLICY IF EXISTS "Authenticated users can delete customers" ON customers;
+
+CREATE POLICY "Authenticated users can select customers" ON customers
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert customers" ON customers
+  FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update customers" ON customers
+  FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete customers" ON customers
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- Admin Panel RLS Policies for Udhar Ledger Table
+-- ============================================
+-- Requires: public.udhar_ledger created (see udhar_ledger_table.sql)
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select udhar_ledger" ON udhar_ledger;
+DROP POLICY IF EXISTS "Authenticated users can insert udhar_ledger" ON udhar_ledger;
+DROP POLICY IF EXISTS "Authenticated users can update udhar_ledger" ON udhar_ledger;
+DROP POLICY IF EXISTS "Authenticated users can delete udhar_ledger" ON udhar_ledger;
+
+CREATE POLICY "Authenticated users can select udhar_ledger" ON udhar_ledger
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert udhar_ledger" ON udhar_ledger
+  FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update udhar_ledger" ON udhar_ledger
+  FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete udhar_ledger" ON udhar_ledger
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
 -- Check current RLS policies
 -- ============================================
 -- Run this to see current policies:
@@ -149,4 +239,7 @@ CREATE POLICY "Authenticated users can select salary_entries" ON salary_entries
 -- SELECT * FROM pg_policies WHERE tablename = 'expenses';
 -- SELECT * FROM pg_policies WHERE tablename = 'dip_entries';
 -- SELECT * FROM pg_policies WHERE tablename = 'salary_entries';
+-- SELECT * FROM pg_policies WHERE tablename = 'inventory';
+-- SELECT * FROM pg_policies WHERE tablename = 'customers';
+-- SELECT * FROM pg_policies WHERE tablename = 'udhar_ledger';
 

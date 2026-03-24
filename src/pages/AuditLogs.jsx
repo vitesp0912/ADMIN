@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { 
   FileText, 
@@ -47,7 +47,33 @@ export default function AuditLogs() {
   })
   const [activeFilterCount, setActiveFilterCount] = useState(0)
 
+  /** Maps customer UUID → display label (name · phone) for audit diff rows */
+  const [customerLabelById, setCustomerLabelById] = useState({})
+  const customerLabelByIdRef = useRef({})
+  useEffect(() => {
+    customerLabelByIdRef.current = customerLabelById
+  }, [customerLabelById])
+
   const LIMIT = 10
+
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+  const collectCustomerIdsFromLogPayloads = (logList) => {
+    const ids = new Set()
+    const collect = (obj) => {
+      if (!obj || typeof obj !== 'object') return
+      for (const [k, v] of Object.entries(obj)) {
+        if (k !== 'customer_id' && !k.endsWith('_customer_id')) continue
+        if (typeof v === 'string' && UUID_RE.test(v)) ids.add(v)
+      }
+    }
+    logList.forEach((log) => {
+      collect(log.old_values)
+      collect(log.new_values)
+    })
+    return [...ids]
+  }
 
   // ============================================
   // DATA FETCHING
@@ -63,6 +89,7 @@ export default function AuditLogs() {
     if (selectedPumpId) {
       setOffset(0)
       setLogs([])
+      setCustomerLabelById({})
       fetchLogs(selectedPumpId, 0)
       fetchTotalCount(selectedPumpId)
       fetchFilterOptions(selectedPumpId)
@@ -74,6 +101,42 @@ export default function AuditLogs() {
     const count = Object.values(filters).filter(v => v !== '').length
     setActiveFilterCount(count)
   }, [filters])
+
+  // Resolve customer_id UUIDs to name · phone (e.g. udhar ledger rows)
+  useEffect(() => {
+    if (!logs.length) return
+    const needIds = collectCustomerIdsFromLogPayloads(logs).filter(
+      (id) => !customerLabelByIdRef.current[id]
+    )
+    if (needIds.length === 0) return
+
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name, phone')
+        .in('id', needIds)
+
+      if (cancelled || error) {
+        if (error) console.error('Audit log customer lookup:', error)
+        return
+      }
+
+      setCustomerLabelById((prev) => {
+        const next = { ...prev }
+        data?.forEach((c) => {
+          const name = (c.name || '').trim() || 'Customer'
+          const phone = (c.phone || '').trim()
+          next[c.id] = phone ? `${name} · ${phone}` : name
+        })
+        return next
+      })
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [logs])
 
   const fetchPumps = async () => {
     try {
@@ -302,8 +365,8 @@ export default function AuditLogs() {
         changes.push({
           field: formatFieldName(key),
           fieldKey: key, // Pass raw key for context-aware formatting
-          oldValue: formatValue(oldVal, key),
-          newValue: formatValue(newVal, key)
+          oldValue: formatValue(oldVal, key, customerLabelById),
+          newValue: formatValue(newVal, key, customerLabelById)
         })
       }
     })
@@ -414,7 +477,9 @@ export default function AuditLogs() {
       'expense_type': 'Expense Type',
       'description': 'Description',
       'amount': 'Amount',
-      'quantity': 'Quantity'
+      'quantity': 'Quantity',
+      'customer_id': 'Customer',
+      'testing_amount': 'Testing amount (liters)'
     }
     
     if (fieldMappings[field]) return fieldMappings[field]
@@ -434,23 +499,32 @@ export default function AuditLogs() {
     'meter_reading', 'reading', 'nozzle_reading',
     'quantity', 'liters', 'litres', 'volume',
     'dip_value', 'dip_reading', 'stock_liters', 'stock_litres',
-    'opening_stock', 'closing_stock', 'received_qty', 'sold_qty'
+    'opening_stock', 'closing_stock', 'received_qty', 'sold_qty',
+    // Daily testing: liters (must be listed before currencyFields' "amount" substring match)
+    'testing_amount'
   ]
 
   // Fields that represent currency/money
   const currencyFields = [
     'amount', 'total_amount', 'price', 'fuel_price', 'rate',
-    'salary', 'payment', 'revenue', 'cost', 'expense_amount',
+    'payment', 'revenue', 'cost', 'expense_amount',
     'credit_amount', 'debit_amount', 'balance', 'total', 'subtotal'
   ]
 
   // Format values for display - context-aware based on field name
-  const formatValue = (value, fieldKey = '') => {
+  const formatValue = (value, fieldKey = '', customerLabels = {}) => {
     if (value === null || value === undefined) return null
     if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+
+    const keyLower = fieldKey.toLowerCase()
+    const isCustomerIdField =
+      keyLower === 'customer_id' || keyLower.endsWith('_customer_id')
+    if (isCustomerIdField && typeof value === 'string' && UUID_RE.test(value)) {
+      const resolved = customerLabels[value]
+      if (resolved) return resolved
+    }
     
     if (typeof value === 'number') {
-      const keyLower = fieldKey.toLowerCase()
       
       // Check if this is a unit/quantity field (meter readings, quantities, etc.)
       const isUnitField = unitFields.some(f => keyLower.includes(f) || keyLower === f)
@@ -553,14 +627,12 @@ export default function AuditLogs() {
       'expenses': 'Expense',
       'sale': 'Sale',
       'sales': 'Sale',
-      'dip_entry': 'Dip Entry',
-      'dip_entries': 'Dip Entry',
-      'salary_entry': 'Salary Entry',
-      'salary_entries': 'Salary Entry',
       'pump': 'Pump Settings',
       'pumps': 'Pump Settings',
       'user': 'User',
-      'users': 'User'
+      'users': 'User',
+      'udhar_ledger': 'Udhar Ledger',
+      'udhar ledger': 'Udhar Ledger'
     }
     return mappings[entity] || entity.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
