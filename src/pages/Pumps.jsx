@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Search, Building2, CheckCircle, XCircle, Gauge, Trash2 } from 'lucide-react'
+import { Search, Building2, CheckCircle, XCircle, Gauge } from 'lucide-react'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -26,7 +26,6 @@ export default function Pumps() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [updating, setUpdating] = useState(null)
-  const [deletingId, setDeletingId] = useState(null)
   const [message, setMessage] = useState({ type: '', text: '' })
 
   useEffect(() => {
@@ -203,38 +202,6 @@ export default function Pumps() {
     }
   }
 
-  const handleDeletePump = async (e, pump) => {
-    e.stopPropagation()
-    const label = pump.name || pump.pump_code || 'this pump'
-    if (
-      !confirm(
-        `Permanently delete "${label}"? This cannot be undone. Related data may block deletion until removed in the database.`
-      )
-    ) {
-      return
-    }
-
-    setDeletingId(pump.id)
-    try {
-      const { error } = await supabase.from('pumps').delete().eq('id', pump.id)
-
-      if (error) throw error
-
-      setMessage({ type: 'success', text: `Pump "${label}" deleted.` })
-      setTimeout(() => setMessage({ type: '', text: '' }), 4000)
-      fetchPumps()
-    } catch (error) {
-      console.error('Error deleting pump:', error)
-      setMessage({
-        type: 'error',
-        text: error.message || 'Failed to delete pump. Check foreign keys or permissions.',
-      })
-      setTimeout(() => setMessage({ type: '', text: '' }), 6000)
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
   const handleRejectPump = async (pumpId) => {
     if (!confirm('Are you sure you want to reject this pump registration?')) return
     
@@ -373,9 +340,6 @@ export default function Pumps() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -468,18 +432,6 @@ export default function Pumps() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(pump.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeletePump(e, pump)}
-                        disabled={deletingId === pump.id || updating === pump.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        title="Delete pump"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        {deletingId === pump.id ? 'Deleting…' : 'Delete'}
-                      </button>
                     </td>
                   </tr>
                 ))}

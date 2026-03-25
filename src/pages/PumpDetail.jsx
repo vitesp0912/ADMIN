@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
 
 // Helper function to convert text to Title Case
@@ -20,6 +20,7 @@ const toTitleCase = (str) => {
 
 export default function PumpDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [pump, setPump] = useState(null)
   const [users, setUsers] = useState([])
   const [sales, setSales] = useState([])
@@ -67,6 +68,16 @@ export default function PumpDetail() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const [dataLoading, setDataLoading] = useState({})
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [modalPassword, setModalPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletingPump, setDeletingPump] = useState(false)
 
   // Management form state
   const [formData, setFormData] = useState({
@@ -489,6 +500,89 @@ export default function PumpDetail() {
     }, 100)
   }
 
+  const openPasswordModal = () => {
+    const defaultUser = users[0]?.id || ''
+    setSelectedUserId(defaultUser)
+    setModalPassword('')
+    setShowPassword(false)
+    setPasswordError('')
+    setPasswordSuccess('')
+    setPasswordModalOpen(true)
+  }
+
+  const closePasswordModal = () => {
+    setPasswordModalOpen(false)
+    setSelectedUserId('')
+    setModalPassword('')
+    setShowPassword(false)
+    setPasswordError('')
+    setPasswordSuccess('')
+  }
+
+  const handleSetUserPassword = async () => {
+    if (!selectedUserId) {
+      setPasswordError('Please select a user.')
+      return
+    }
+    if (!modalPassword || modalPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters.')
+      return
+    }
+    setPasswordLoading(true)
+    setPasswordError('')
+    setPasswordSuccess('')
+    try {
+      const { error } = await supabase.rpc('set_user_password', {
+        p_user_id: selectedUserId,
+        p_new_password: modalPassword,
+      })
+      if (error) throw error
+      setPasswordSuccess('Password set successfully.')
+      setModalPassword('')
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to set password.')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  const openDeleteModal = () => {
+    setDeleteConfirmText('')
+    setDeleteModalOpen(true)
+  }
+
+  const closeDeleteModal = () => {
+    if (deletingPump) return
+    setDeleteModalOpen(false)
+    setDeleteConfirmText('')
+  }
+
+  const deleteKeyword = `DELETE ${pump?.pump_code || pump?.name || ''}`.trim()
+
+  const handleDeletePumpFromDetail = async () => {
+    if (deleteConfirmText !== deleteKeyword) {
+      setMessage({
+        type: 'error',
+        text: `Type "${deleteKeyword}" exactly to confirm deletion.`,
+      })
+      return
+    }
+    setDeletingPump(true)
+    try {
+      const { error } = await supabase.from('pumps').delete().eq('id', id)
+      if (error) throw error
+      navigate('/pumps')
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error.message || 'Failed to delete pump. Please check related records and permissions.',
+      })
+      closeDeleteModal()
+    } finally {
+      setDeletingPump(false)
+    }
+  }
+
   if (loading) {
     return <div className="text-center py-12">Loading pump details...</div>
   }
@@ -505,7 +599,7 @@ export default function PumpDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-4 md:p-6 lg:p-8">
       {/* Back Navigation */}
       <div className="mb-6">
         <Link
@@ -518,7 +612,7 @@ export default function PumpDetail() {
       </div>
 
       {/* Page Header - Cleaner Status Alignment */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900 mb-1">{pump.name}</h1>
@@ -528,7 +622,7 @@ export default function PumpDetail() {
               <span className="font-medium text-gray-700">{pump.pump_code || 'N/A'}</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
                 pump.is_active
@@ -556,7 +650,7 @@ export default function PumpDetail() {
       </div>
 
       {/* Main Content - 70/30 Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] gap-4 lg:gap-6 xl:gap-8 items-start">
         {/* LEFT COLUMN - Pump Data (70%) */}
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -569,8 +663,8 @@ export default function PumpDetail() {
             </div>
             
             {/* Tabs - Clean, No Horizontal Scroll */}
-            <div className="border-b border-gray-200 bg-white">
-              <nav className="flex flex-wrap px-6">
+            <div className="border-b border-gray-200 bg-white overflow-x-auto">
+              <nav className="flex px-3 sm:px-6 min-w-max">
                 {[
                   { id: 'users', label: 'Users' },
                   { id: 'inventory', label: 'Inventory' },
@@ -587,7 +681,7 @@ export default function PumpDetail() {
                       setActiveDataTab(tab.id)
                       fetchTabData(tab.id)
                     }}
-                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                    className={`py-3 px-3 sm:px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                       activeDataTab === tab.id
                         ? 'border-indigo-600 text-indigo-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -600,7 +694,7 @@ export default function PumpDetail() {
             </div>
 
             {/* Tab Content */}
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
 
             {/* Users Tab */}
             {activeDataTab === 'users' && (
@@ -1083,7 +1177,7 @@ export default function PumpDetail() {
         </div>
 
         {/* RIGHT COLUMN - Pump Information (30%) */}
-        <div className="lg:sticky lg:top-6 space-y-6">
+        <div className="w-full xl:sticky xl:top-6 space-y-4 sm:space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {/* Section Header */}
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
@@ -1094,17 +1188,18 @@ export default function PumpDetail() {
             </div>
             
             {/* Tabs */}
-            <div className="border-b border-gray-200 bg-white">
-              <nav className="flex px-6">
+            <div className="border-b border-gray-200 bg-white overflow-x-auto">
+              <nav className="flex px-3 sm:px-6 min-w-max">
                 {[
                   { id: 'details', label: 'Details' },
                   { id: 'subscription', label: 'Subscription' },
                   { id: 'management', label: 'Management' },
+                  { id: 'actions', label: 'Actions' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                    className={`py-3 px-3 sm:px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                       activeTab === tab.id
                         ? 'border-indigo-600 text-indigo-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1117,7 +1212,7 @@ export default function PumpDetail() {
             </div>
 
             {/* Tab Content */}
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
 
               {message.text && (
                 <div
@@ -1471,10 +1566,182 @@ export default function PumpDetail() {
                 </div>
                 </div>
             )}
+
+              {/* Actions Tab */}
+              {activeTab === 'actions' && (
+              <div className="space-y-4">
+                <div className="p-4 border border-gray-200 rounded-lg bg-white">
+                  <h3 className="font-semibold text-gray-900 mb-2">User Password Actions</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Set/reset password for users linked to this pump.
+                  </p>
+                  <button
+                    onClick={openPasswordModal}
+                    disabled={users.length === 0}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Set / View Password
+                  </button>
+                  {users.length === 0 && (
+                    <p className="text-xs text-gray-500 mt-2">No users found for this pump.</p>
+                  )}
+                </div>
+
+                <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+                  <h3 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Danger Zone
+                  </h3>
+                  <p className="text-sm text-red-700 mb-4">
+                    Deleting this pump is permanent and can remove related records.
+                  </p>
+                  <button
+                    onClick={openDeleteModal}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 inline-flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Pump
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
+
+    {passwordModalOpen && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 relative">
+          <button
+            className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl"
+            onClick={closePasswordModal}
+            aria-label="Close"
+          >
+            ×
+          </button>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Set User Password</h3>
+
+          <label className="text-sm font-medium text-gray-700 mb-1 block">User</label>
+          <select
+            value={selectedUserId}
+            onChange={(e) => setSelectedUserId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3"
+            disabled={passwordLoading}
+          >
+            <option value="">Select user</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {(u.name || 'Unnamed')} ({u.phone || 'No phone'})
+              </option>
+            ))}
+          </select>
+
+          <label className="text-sm font-medium text-gray-700 mb-1 block">New Password</label>
+          <div className="relative mb-3">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={modalPassword}
+              onChange={(e) => setModalPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg pr-10"
+              placeholder="At least 8 characters"
+              disabled={passwordLoading}
+            />
+            <button
+              type="button"
+              className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
+              onClick={() => setShowPassword((s) => !s)}
+            >
+              <Eye className="w-5 h-5" />
+            </button>
+          </div>
+
+          {passwordError && <p className="text-sm text-red-600 mb-2">{passwordError}</p>}
+          {passwordSuccess && <p className="text-sm text-green-600 mb-2">{passwordSuccess}</p>}
+
+          <div className="flex justify-end gap-2 mt-3">
+            <button
+              onClick={closePasswordModal}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700"
+              disabled={passwordLoading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSetUserPassword}
+              className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              disabled={passwordLoading}
+            >
+              {passwordLoading ? 'Saving...' : 'Set Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {deleteModalOpen && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-xl p-5 relative">
+          <button
+            className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl"
+            onClick={closeDeleteModal}
+            aria-label="Close"
+          >
+            ×
+          </button>
+          <h3 className="text-lg font-semibold text-red-700 mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" />
+            Confirm Pump Deletion
+          </h3>
+          <p className="text-sm text-gray-700 mb-3">
+            You are about to permanently delete this pump and associated records (based on DB cascade rules).
+          </p>
+
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm space-y-1 mb-4">
+            <p><span className="font-medium">Pump Code:</span> {pump.pump_code || 'N/A'}</p>
+            <p><span className="font-medium">Name:</span> {pump.name || 'N/A'}</p>
+            <p><span className="font-medium">Owner:</span> {pump.owner_name || 'N/A'}</p>
+            <p><span className="font-medium">Owner Phone:</span> {pump.owner_phone || 'N/A'}</p>
+            <p><span className="font-medium">Pump Phone:</span> {pump.phone || 'N/A'}</p>
+            <p><span className="font-medium">Address:</span> {pump.address || 'N/A'}</p>
+            <p><span className="font-medium">City/State:</span> {pump.city || '-'} / {pump.state || '-'}</p>
+            <p><span className="font-medium">PIN:</span> {pump.pincode || 'N/A'}</p>
+            <p><span className="font-medium">Status:</span> {pump.is_active ? 'Active' : 'Inactive'} | {pump.registration_status || 'N/A'}</p>
+            <p><span className="font-medium">Created:</span> {pump.created_at ? new Date(pump.created_at).toLocaleString() : 'N/A'}</p>
+          </div>
+
+          <p className="text-sm text-red-700 mb-2">
+            Type <span className="font-semibold">{deleteKeyword}</span> to confirm:
+          </p>
+          <input
+            type="text"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            className="w-full px-3 py-2 border border-red-300 rounded-lg mb-4"
+            placeholder={deleteKeyword}
+            disabled={deletingPump}
+          />
+
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={closeDeleteModal}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700"
+              disabled={deletingPump}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeletePumpFromDetail}
+              className="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              disabled={deletingPump || deleteConfirmText !== deleteKeyword}
+            >
+              {deletingPump ? 'Deleting...' : 'Delete Permanently'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   )
 }
