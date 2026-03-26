@@ -9,6 +9,7 @@ import Users from './pages/Users'
 import Sales from './pages/Sales'
 import Expenses from './pages/Expenses'
 import MeterReadings from './pages/MeterReadings'
+import Leads from './pages/Leads'
 import Settings from './pages/Settings'
 import AuditLogs from './pages/AuditLogs'
 import ErrorLogs from './pages/ErrorLogs'
@@ -58,6 +59,7 @@ function App() {
           <Route path="sales" element={<Sales />} />
           <Route path="expenses" element={<Expenses />} />
           <Route path="meter-readings" element={<MeterReadings />} />
+          <Route path="leads" element={<Leads />} />
           <Route path="settings" element={<Settings />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="error-logs" element={<ErrorLogs />} />
