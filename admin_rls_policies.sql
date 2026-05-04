@@ -229,6 +229,62 @@ CREATE POLICY "Authenticated users can delete udhar_ledger" ON udhar_ledger
   USING (auth.role() = 'authenticated');
 
 -- ============================================
+-- Admin Panel RLS Policies for Tanks Table
+-- ============================================
+-- Requires: public.tanks created (see tanks_table.sql)
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select tanks" ON tanks;
+DROP POLICY IF EXISTS "Authenticated users can insert tanks" ON tanks;
+DROP POLICY IF EXISTS "Authenticated users can update tanks" ON tanks;
+DROP POLICY IF EXISTS "Authenticated users can delete tanks" ON tanks;
+
+CREATE POLICY "Authenticated users can select tanks" ON tanks
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert tanks" ON tanks
+  FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update tanks" ON tanks
+  FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete tanks" ON tanks
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- Admin Panel RLS Policies for Fuel Receipts Table
+-- ============================================
+-- Requires: public.fuel_receipts created (see fuel_receipts_table.sql)
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select fuel_receipts" ON fuel_receipts;
+DROP POLICY IF EXISTS "Authenticated users can insert fuel_receipts" ON fuel_receipts;
+DROP POLICY IF EXISTS "Authenticated users can update fuel_receipts" ON fuel_receipts;
+DROP POLICY IF EXISTS "Authenticated users can delete fuel_receipts" ON fuel_receipts;
+
+CREATE POLICY "Authenticated users can select fuel_receipts" ON fuel_receipts
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert fuel_receipts" ON fuel_receipts
+  FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update fuel_receipts" ON fuel_receipts
+  FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete fuel_receipts" ON fuel_receipts
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
 -- Check current RLS policies
 -- ============================================
 -- Run this to see current policies:
@@ -242,4 +298,6 @@ CREATE POLICY "Authenticated users can delete udhar_ledger" ON udhar_ledger
 -- SELECT * FROM pg_policies WHERE tablename = 'inventory';
 -- SELECT * FROM pg_policies WHERE tablename = 'customers';
 -- SELECT * FROM pg_policies WHERE tablename = 'udhar_ledger';
+-- SELECT * FROM pg_policies WHERE tablename = 'tanks';
+-- SELECT * FROM pg_policies WHERE tablename = 'fuel_receipts';
 
