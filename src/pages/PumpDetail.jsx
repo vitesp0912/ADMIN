@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, Plus } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList } from 'lucide-react'
 import { format } from 'date-fns'
 
 // Helper function to convert text to Title Case
@@ -81,15 +81,6 @@ export default function PumpDetail() {
 
   const [tanks, setTanks] = useState([])
   const [fuelReceipts, setFuelReceipts] = useState([])
-  const [tankModalOpen, setTankModalOpen] = useState(false)
-  const [tankForm, setTankForm] = useState({})
-  const [tankSaving, setTankSaving] = useState(false)
-  const [tankModalError, setTankModalError] = useState('')
-  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
-  const [receiptForm, setReceiptForm] = useState({})
-  const [receiptSaving, setReceiptSaving] = useState(false)
-  const [receiptModalError, setReceiptModalError] = useState('')
-  const [fuelTypesDropdown, setFuelTypesDropdown] = useState([])
 
   // Management form state
   const [formData, setFormData] = useState({
@@ -440,177 +431,9 @@ export default function PumpDetail() {
     }
   }
 
-  const fetchFuelTypesDropdown = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('fuel_types')
-        .select('id, name, fuel_type, title')
-        .order('name')
-        .limit(500)
-      if (error) {
-        console.error('Error fetching fuel types list:', error)
-        return
-      }
-      setFuelTypesDropdown(data || [])
-      const map = {}
-      data?.forEach((fuel) => {
-        map[fuel.id] = fuel
-      })
-      setFuelTypes((prev) => ({ ...prev, ...map }))
-    } catch (err) {
-      console.error('Error fetching fuel types list:', err)
-    }
-  }
-
   const fuelTypeLabel = (ftId) => {
     const fuel = fuelTypes[ftId]
     return fuel?.name || fuel?.fuel_type || fuel?.title || ftId || 'N/A'
-  }
-
-  const openTankModal = (existing = null) => {
-    setTankModalError('')
-    fetchFuelTypesDropdown()
-    if (existing) {
-      setTankForm({
-        id: existing.id,
-        name: existing.name || '',
-        capacity_liters: String(existing.capacity_liters ?? ''),
-        fuel_type: existing.fuel_type || '',
-        is_active: existing.is_active !== false,
-        initial_volume_liters: String(existing.initial_volume_liters ?? '0'),
-        initial_dip_cm: String(existing.initial_dip_cm ?? '0'),
-        current_volume_liters: String(existing.current_volume_liters ?? '0'),
-      })
-    } else {
-      setTankForm({
-        id: '',
-        name: '',
-        capacity_liters: '',
-        fuel_type: '',
-        is_active: true,
-        initial_volume_liters: '0',
-        initial_dip_cm: '0',
-        current_volume_liters: '0',
-      })
-    }
-    setTankModalOpen(true)
-  }
-
-  const handleSaveTank = async () => {
-    setTankSaving(true)
-    setTankModalError('')
-    try {
-      const cap = parseFloat(tankForm.capacity_liters)
-      const initVol = parseFloat(tankForm.initial_volume_liters || '0')
-      const curVol = parseFloat(tankForm.current_volume_liters || '0')
-      const dip = parseFloat(tankForm.initial_dip_cm || '0')
-      if (!tankForm.name?.trim()) throw new Error('Name is required')
-      if (!tankForm.fuel_type) throw new Error('Fuel type is required')
-      if (Number.isNaN(cap) || cap <= 0) throw new Error('Capacity must be a positive number')
-      if (Number.isNaN(initVol) || initVol < 0) throw new Error('Initial volume must be >= 0')
-      if (Number.isNaN(curVol) || curVol < 0) throw new Error('Current volume must be >= 0')
-      if (curVol > cap) throw new Error('Current volume cannot exceed capacity')
-      if (Number.isNaN(dip) || dip < 0) throw new Error('Initial dip must be >= 0')
-
-      const now = new Date().toISOString()
-      if (tankForm.id) {
-        const { error } = await supabase
-          .from('tanks')
-          .update({
-            name: tankForm.name.trim(),
-            capacity_liters: cap,
-            fuel_type: tankForm.fuel_type,
-            is_active: tankForm.is_active,
-            initial_volume_liters: initVol,
-            initial_dip_cm: dip,
-            current_volume_liters: curVol,
-            updated_at: now,
-          })
-          .eq('id', tankForm.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from('tanks').insert({
-          pump_id: id,
-          name: tankForm.name.trim(),
-          capacity_liters: cap,
-          fuel_type: tankForm.fuel_type,
-          is_active: tankForm.is_active,
-          initial_volume_liters: initVol,
-          initial_dip_cm: dip,
-          current_volume_liters: curVol,
-          updated_at: now,
-        })
-        if (error) throw error
-      }
-      setTankModalOpen(false)
-      await fetchTabData('tanks')
-    } catch (e) {
-      setTankModalError(e.message || 'Failed to save tank')
-    } finally {
-      setTankSaving(false)
-    }
-  }
-
-  const openReceiptModal = async () => {
-    setReceiptModalError('')
-    await fetchFuelTypesDropdown()
-    let list = tanks
-    if (!list.length) {
-      const { data } = await supabase.from('tanks').select('*').eq('pump_id', id).order('name')
-      list = data || []
-      setTanks(list)
-    }
-    const first = list[0]
-    const today = new Date().toISOString().slice(0, 10)
-    setReceiptForm({
-      tank_id: first?.id || '',
-      fuel_type_id: first?.fuel_type || '',
-      receipt_date: today,
-      quantity_liters: '',
-      invoice_number: '',
-      supplier_name: '',
-      notes: '',
-    })
-    setReceiptModalOpen(true)
-  }
-
-  const handleReceiptTankChange = (tankId) => {
-    const t = tanks.find((x) => x.id === tankId)
-    setReceiptForm((f) => ({
-      ...f,
-      tank_id: tankId,
-      fuel_type_id: t?.fuel_type || '',
-    }))
-  }
-
-  const handleSaveReceipt = async () => {
-    setReceiptSaving(true)
-    setReceiptModalError('')
-    try {
-      const qty = parseFloat(receiptForm.quantity_liters)
-      if (!receiptForm.tank_id) throw new Error('Select a tank')
-      if (!receiptForm.fuel_type_id) throw new Error('Fuel type is missing (pick a tank)')
-      if (Number.isNaN(qty) || qty <= 0) throw new Error('Quantity must be greater than 0')
-      const { error } = await supabase.from('fuel_receipts').insert({
-        pump_id: id,
-        tank_id: receiptForm.tank_id,
-        fuel_type_id: receiptForm.fuel_type_id,
-        receipt_date: receiptForm.receipt_date || new Date().toISOString().slice(0, 10),
-        quantity_liters: qty,
-        invoice_number: receiptForm.invoice_number?.trim() || null,
-        supplier_name: receiptForm.supplier_name?.trim() || null,
-        notes: receiptForm.notes?.trim() || null,
-        user_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      if (error) throw error
-      setReceiptModalOpen(false)
-      await fetchTabData('fuel-receipts')
-    } catch (e) {
-      setReceiptModalError(e.message || 'Failed to save receipt')
-    } finally {
-      setReceiptSaving(false)
-    }
   }
 
   const handleSaveChanges = async () => {
@@ -1408,36 +1231,20 @@ export default function PumpDetail() {
               </div>
             )}
 
-            {/* Tanks Tab */}
+            {/* Tanks Tab (read-only) */}
             {activeDataTab === 'tanks' && (
               <div>
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <Fuel className="w-5 h-5 text-amber-600" />
-                    Tanks ({tanks.length})
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => openTankModal(null)}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add tank
-                  </button>
-                </div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <Fuel className="w-5 h-5 text-amber-600" />
+                  Tanks ({tanks.length})
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">View only — tanks are not editable from this admin panel.</p>
                 {dataLoading.tanks ? (
                   <div className="text-center py-8">Loading tanks...</div>
                 ) : tanks.length === 0 ? (
                   <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
                     <Fuel className="w-12 h-12 mx-auto mb-3 text-gray-400" />
                     <p className="text-gray-500 font-medium">No tanks configured for this pump</p>
-                    <button
-                      type="button"
-                      onClick={() => openTankModal(null)}
-                      className="mt-4 text-amber-700 font-medium hover:underline"
-                    >
-                      Add your first tank
-                    </button>
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -1451,7 +1258,6 @@ export default function PumpDetail() {
                           <th className="px-4 py-3 text-right font-medium text-gray-700">Initial (L)</th>
                           <th className="px-4 py-3 text-right font-medium text-gray-700">Dip (cm)</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Active</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700"> </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -1470,15 +1276,6 @@ export default function PumpDetail() {
                                 <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">No</span>
                               )}
                             </td>
-                            <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={() => openTankModal(t)}
-                                className="text-indigo-600 hover:text-indigo-800 font-medium"
-                              >
-                                Edit
-                              </button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1488,41 +1285,20 @@ export default function PumpDetail() {
               </div>
             )}
 
-            {/* Fuel receipts Tab */}
+            {/* Fuel receipts Tab (read-only) */}
             {activeDataTab === 'fuel-receipts' && (
               <div>
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <ClipboardList className="w-5 h-5 text-teal-600" />
-                    Fuel receipts ({fuelReceipts.length})
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={openReceiptModal}
-                    disabled={!tanks.length && !dataLoading['fuel-receipts']}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add receipt
-                  </button>
-                </div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <ClipboardList className="w-5 h-5 text-teal-600" />
+                  Fuel receipts ({fuelReceipts.length})
+                </h3>
+                <p className="text-sm text-gray-500 mb-4">View only — receipts are not editable from this admin panel.</p>
                 {dataLoading['fuel-receipts'] ? (
                   <div className="text-center py-8">Loading fuel receipts...</div>
                 ) : fuelReceipts.length === 0 ? (
                   <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
                     <ClipboardList className="w-12 h-12 mx-auto mb-3 text-gray-400" />
                     <p className="text-gray-500 font-medium">No fuel receipts for this pump</p>
-                    {tanks.length === 0 ? (
-                      <p className="text-sm text-amber-700 mt-2">Add a tank first, then record a delivery.</p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={openReceiptModal}
-                        className="mt-4 text-teal-700 font-medium hover:underline"
-                      >
-                        Add a receipt
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -2140,241 +1916,6 @@ export default function PumpDetail() {
               disabled={deletingPump || deleteConfirmText !== deleteKeyword}
             >
               {deletingPump ? 'Deleting...' : 'Delete Permanently'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {tankModalOpen && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 relative my-8">
-          <button
-            type="button"
-            className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl"
-            onClick={() => !tankSaving && setTankModalOpen(false)}
-            aria-label="Close"
-          >
-            ×
-          </button>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Fuel className="w-5 h-5 text-amber-600" />
-            {tankForm.id ? 'Edit tank' : 'Add tank'}
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Name</label>
-              <input
-                type="text"
-                value={tankForm.name || ''}
-                onChange={(e) => setTankForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={tankSaving}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Fuel type</label>
-              <select
-                value={tankForm.fuel_type || ''}
-                onChange={(e) => setTankForm((f) => ({ ...f, fuel_type: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={tankSaving}
-              >
-                <option value="">Select fuel type</option>
-                {fuelTypesDropdown.map((ft) => (
-                  <option key={ft.id} value={ft.id}>
-                    {ft.name || ft.fuel_type || ft.title || ft.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Capacity (L)</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  value={tankForm.capacity_liters ?? ''}
-                  onChange={(e) => setTankForm((f) => ({ ...f, capacity_liters: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  disabled={tankSaving}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Current volume (L)</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  value={tankForm.current_volume_liters ?? ''}
-                  onChange={(e) => setTankForm((f) => ({ ...f, current_volume_liters: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  disabled={tankSaving}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Initial volume (L)</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  value={tankForm.initial_volume_liters ?? ''}
-                  onChange={(e) => setTankForm((f) => ({ ...f, initial_volume_liters: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  disabled={tankSaving}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Initial dip (cm)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={tankForm.initial_dip_cm ?? ''}
-                  onChange={(e) => setTankForm((f) => ({ ...f, initial_dip_cm: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  disabled={tankSaving}
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={!!tankForm.is_active}
-                onChange={(e) => setTankForm((f) => ({ ...f, is_active: e.target.checked }))}
-                disabled={tankSaving}
-              />
-              Active
-            </label>
-            {tankModalError && <p className="text-sm text-red-600">{tankModalError}</p>}
-          </div>
-          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => !tankSaving && setTankModalOpen(false)}
-              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700"
-              disabled={tankSaving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveTank}
-              className="px-3 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-              disabled={tankSaving}
-            >
-              {tankSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {receiptModalOpen && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 relative my-8">
-          <button
-            type="button"
-            className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl"
-            onClick={() => !receiptSaving && setReceiptModalOpen(false)}
-            aria-label="Close"
-          >
-            ×
-          </button>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <ClipboardList className="w-5 h-5 text-teal-600" />
-            Add fuel receipt
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Tank</label>
-              <select
-                value={receiptForm.tank_id || ''}
-                onChange={(e) => handleReceiptTankChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={receiptSaving}
-              >
-                <option value="">Select tank</option>
-                {tanks.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({fuelTypeLabel(t.fuel_type)})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Receipt date</label>
-              <input
-                type="date"
-                value={receiptForm.receipt_date || ''}
-                onChange={(e) => setReceiptForm((f) => ({ ...f, receipt_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={receiptSaving}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Quantity (L)</label>
-              <input
-                type="number"
-                step="0.001"
-                min="0"
-                value={receiptForm.quantity_liters ?? ''}
-                onChange={(e) => setReceiptForm((f) => ({ ...f, quantity_liters: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={receiptSaving}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Invoice #</label>
-              <input
-                type="text"
-                value={receiptForm.invoice_number || ''}
-                onChange={(e) => setReceiptForm((f) => ({ ...f, invoice_number: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={receiptSaving}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Supplier</label>
-              <input
-                type="text"
-                value={receiptForm.supplier_name || ''}
-                onChange={(e) => setReceiptForm((f) => ({ ...f, supplier_name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                disabled={receiptSaving}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Notes</label>
-              <textarea
-                value={receiptForm.notes || ''}
-                onChange={(e) => setReceiptForm((f) => ({ ...f, notes: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                rows={2}
-                disabled={receiptSaving}
-              />
-            </div>
-            {receiptModalError && <p className="text-sm text-red-600">{receiptModalError}</p>}
-          </div>
-          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => !receiptSaving && setReceiptModalOpen(false)}
-              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700"
-              disabled={receiptSaving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveReceipt}
-              className="px-3 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-              disabled={receiptSaving || !tanks.length}
-            >
-              {receiptSaving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
