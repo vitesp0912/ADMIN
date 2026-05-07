@@ -223,7 +223,7 @@ export default function PumpDetail() {
 
         case 'daily-testing':
           const { data: testingData, error: testingError } = await supabase
-            .from('daily_testing')
+            .from('nozzle_reading')
             .select('*')
             .eq('pump_id', id)
             .order('date', { ascending: false })
@@ -232,15 +232,15 @@ export default function PumpDetail() {
             console.error('Daily testing fetch error:', testingError)
             throw testingError
           }
-          console.log(`Fetched ${testingData?.length || 0} daily testing records:`, testingData)
+          console.log(`Fetched ${testingData?.length || 0} nozzle testing records:`, testingData)
           setDailyTesting(testingData || [])
 
-          // Fetch fuel type names for daily testing
-          const testingFuelTypeIds = [...new Set((testingData || [])
-            .map((t) => t.fuel_type_id)
+          // Fetch nozzle names for daily testing rows
+          const testingNozzleIds = [...new Set((testingData || [])
+            .map((t) => t.nozzle_id)
             .filter(Boolean))]
-          if (testingFuelTypeIds.length > 0) {
-            await fetchFuelTypes(testingFuelTypeIds)
+          if (testingNozzleIds.length > 0) {
+            await fetchNozzlesForPump(id, testingNozzleIds)
           }
           break
 
@@ -1201,7 +1201,7 @@ export default function PumpDetail() {
                 ) : dailyTesting.length === 0 ? (
                   <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
                     <Gauge className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-gray-500 font-medium">No daily testing records found for this pump</p>
+                    <p className="text-gray-500 font-medium">No nozzle testing records found for this pump</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -1209,8 +1209,8 @@ export default function PumpDetail() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Testing Amount</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Nozzle</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Testing Amount (L)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -1218,10 +1218,11 @@ export default function PumpDetail() {
                           <tr key={entry.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3">{format(new Date(entry.date), 'dd MMM yyyy')}</td>
                             <td className="px-4 py-3 font-medium">{(() => {
-                              const fuel = fuelTypes[entry.fuel_type_id]
-                              return fuel?.name || fuel?.fuel_type || fuel?.title || entry.fuel_type_id || 'N/A'
+                              const key = `${entry.pump_id}:${entry.nozzle_id}`
+                              const nozzle = nozzles[key]
+                              return nozzle?.nozzle_name || nozzle?.name || entry.nozzle_id || 'N/A'
                             })()}</td>
-                            <td className="px-4 py-3 font-medium">{parseFloat(entry.testing_amount || 0).toFixed(3)}</td>
+                            <td className="px-4 py-3 font-medium">{parseFloat(entry.testing_amount_liters || 0).toFixed(3)}</td>
                           </tr>
                         ))}
                       </tbody>
