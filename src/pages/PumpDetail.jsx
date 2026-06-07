@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList } from 'lucide-react'
-import { format } from 'date-fns'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock } from 'lucide-react'
+import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -81,6 +81,9 @@ export default function PumpDetail() {
 
   const [tanks, setTanks] = useState([])
   const [fuelReceipts, setFuelReceipts] = useState([])
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditLogsTotal, setAuditLogsTotal] = useState(0)
+  const [errorLogs, setErrorLogs] = useState([])
 
   // Management form state
   const [formData, setFormData] = useState({
@@ -377,6 +380,40 @@ export default function PumpDetail() {
           if (mergedFuelIds.length > 0) {
             await fetchFuelTypes(mergedFuelIds)
           }
+          break
+        }
+
+        case 'activity': {
+          const [{ data: logData, error: logErr }, { data: countData, error: countErr }] = await Promise.all([
+            supabase.rpc('get_audit_logs', {
+              p_pump_id: id,
+              p_limit: 100,
+              p_offset: 0,
+            }),
+            supabase.rpc('get_audit_logs_count', { p_pump_id: id }),
+          ])
+          if (logErr) {
+            console.error('Activity fetch error:', logErr)
+            throw logErr
+          }
+          if (countErr) console.error('Activity count error:', countErr)
+          setAuditLogs(logData || [])
+          setAuditLogsTotal(typeof countData === 'number' ? countData : (countData ?? 0))
+          break
+        }
+
+        case 'error-logs': {
+          const { data: errData, error: errLogErr } = await supabase
+            .from('error_audits')
+            .select('*')
+            .eq('pump_id', id)
+            .order('created_at', { ascending: false })
+            .limit(200)
+          if (errLogErr) {
+            console.error('Error logs fetch error:', errLogErr)
+            throw errLogErr
+          }
+          setErrorLogs(errData || [])
           break
         }
       }
@@ -679,6 +716,26 @@ export default function PumpDetail() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {phoneToTel(pump.phone) && (
+              <a
+                href={`tel:${phoneToTel(pump.phone)}`}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors"
+                title={`Call ${pump.phone}`}
+              >
+                <Phone className="w-4 h-4" />
+                Call pump
+              </a>
+            )}
+            {phoneToTel(pump.owner_phone) && pump.owner_phone !== pump.phone && (
+              <a
+                href={`tel:${phoneToTel(pump.owner_phone)}`}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100 transition-colors"
+                title={`Call owner ${pump.owner_phone}`}
+              >
+                <Phone className="w-4 h-4" />
+                Call owner
+              </a>
+            )}
             <span
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
                 pump.is_active
@@ -732,6 +789,8 @@ export default function PumpDetail() {
                   { id: 'daily-testing', label: 'Daily Testing' },
                   { id: 'tanks', label: 'Tanks' },
                   { id: 'fuel-receipts', label: 'Fuel receipts' },
+                  { id: 'activity', label: 'Activity' },
+                  { id: 'error-logs', label: 'Error logs' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -811,7 +870,7 @@ export default function PumpDetail() {
                             </td>
                             <td className="px-6 py-3 text-sm text-gray-500">
                               {user.last_login_at
-                                ? format(new Date(user.last_login_at), 'dd MMM yyyy, HH:mm')
+                                ? formatISTDateTime(user.last_login_at)
                                 : '—'}
                             </td>
                             </tr>
@@ -865,13 +924,13 @@ export default function PumpDetail() {
                               </td>
                               <td className="px-4 py-3">
                                 {row.expiry_date
-                                  ? format(new Date(row.expiry_date + 'T12:00:00'), 'dd MMM yyyy')
+                                  ? formatISTDate(row.expiry_date)
                                   : '—'}
                               </td>
                               <td className="px-4 py-3 text-gray-600">{row.batch_number || '—'}</td>
                               <td className="px-4 py-3 text-gray-500">
                                 {row.created_at
-                                  ? format(new Date(row.created_at), 'dd MMM yyyy HH:mm')
+                                  ? formatISTDateTime(row.created_at)
                                   : '—'}
                               </td>
                             </tr>
@@ -917,12 +976,12 @@ export default function PumpDetail() {
                               <td className="px-4 py-3 font-mono text-gray-800">{row.phone}</td>
                               <td className="px-4 py-3 text-gray-500">
                                 {row.created_at
-                                  ? format(new Date(row.created_at), 'dd MMM yyyy HH:mm')
+                                  ? formatISTDateTime(row.created_at)
                                   : '—'}
                               </td>
                               <td className="px-4 py-3 text-gray-500">
                                 {row.updated_at
-                                  ? format(new Date(row.updated_at), 'dd MMM yyyy HH:mm')
+                                  ? formatISTDateTime(row.updated_at)
                                   : '—'}
                               </td>
                             </tr>
@@ -999,12 +1058,7 @@ export default function PumpDetail() {
                                 return (
                                   <tr key={row.id} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 whitespace-nowrap">
-                                      {row.business_date
-                                        ? format(
-                                            new Date(row.business_date + 'T12:00:00'),
-                                            'dd MMM yyyy'
-                                          )
-                                        : '—'}
+                                      {row.business_date ? formatISTDate(row.business_date) : '—'}
                                     </td>
                                     <td className="px-4 py-3">
                                       <span
@@ -1034,7 +1088,7 @@ export default function PumpDetail() {
                                     </td>
                                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                                       {row.created_at
-                                        ? format(new Date(row.created_at), 'dd MMM yyyy HH:mm')
+                                        ? formatISTDateTime(row.created_at)
                                         : '—'}
                                     </td>
                                   </tr>
@@ -1065,10 +1119,7 @@ export default function PumpDetail() {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Liters</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Price/L</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time (IST)</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Payment</th>
                         </tr>
@@ -1076,13 +1127,7 @@ export default function PumpDetail() {
                       <tbody className="divide-y divide-gray-200">
                         {sales.map((sale) => (
                           <tr key={sale.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{format(new Date(sale.date_time), 'dd MMM yyyy HH:mm')}</td>
-                            <td className="px-4 py-3 font-medium">{(() => {
-                              const fuel = fuelTypes[sale.fuel_type_id]
-                              return fuel?.name || fuel?.fuel_type || fuel?.title || sale.fuel_type_id || 'N/A'
-                            })()}</td>
-                            <td className="px-4 py-3 font-medium">{sale.liters ? parseFloat(sale.liters).toFixed(2) : 'N/A'}</td>
-                            <td className="px-4 py-3 font-medium">₹{parseFloat(sale.price_per_liter).toFixed(2)}</td>
+                            <td className="px-4 py-3">{formatISTDateTime(sale.date_time)}</td>
                             <td className="px-4 py-3 font-bold">₹{parseFloat(sale.total_amount).toFixed(2)}</td>
                             <td className="px-4 py-3">
                               <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
@@ -1126,7 +1171,7 @@ export default function PumpDetail() {
                       <tbody className="divide-y divide-gray-200">
                         {meterReadings.map((reading) => (
                           <tr key={reading.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{format(new Date(reading.date), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3">{formatISTDate(reading.date)}</td>
                             <td className="px-4 py-3 font-medium">{(() => {
                               const key = `${reading.pump_id}:${reading.nozzle_id}`
                               const nozzle = nozzles[key]
@@ -1175,7 +1220,7 @@ export default function PumpDetail() {
                       <tbody className="divide-y divide-gray-200">
                         {expenses.map((expense) => (
                           <tr key={expense.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{format(new Date(expense.date_time), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3">{formatISTDateTime(expense.date_time)}</td>
                             <td className="px-4 py-3 font-medium">{expense.category ? toTitleCase(expense.category) : 'N/A'}</td>
                             <td className="px-4 py-3">{expense.description || '—'}</td>
                             <td className="px-4 py-3 font-bold text-red-600">₹{parseFloat(expense.amount).toFixed(2)}</td>
@@ -1216,7 +1261,7 @@ export default function PumpDetail() {
                       <tbody className="divide-y divide-gray-200">
                         {dailyTesting.map((entry) => (
                           <tr key={entry.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{format(new Date(entry.date), 'dd MMM yyyy')}</td>
+                            <td className="px-4 py-3">{formatISTDate(entry.date)}</td>
                             <td className="px-4 py-3 font-medium">{(() => {
                               const key = `${entry.pump_id}:${entry.nozzle_id}`
                               const nozzle = nozzles[key]
@@ -1322,12 +1367,10 @@ export default function PumpDetail() {
                           return (
                             <tr key={r.id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 whitespace-nowrap">
-                                {r.receipt_date
-                                  ? format(new Date(r.receipt_date + 'T12:00:00'), 'dd MMM yyyy')
-                                  : '—'}
+                                {formatISTDate(r.receipt_date)}
                               </td>
                               <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                                {r.date_time ? format(new Date(r.date_time), 'dd MMM yyyy HH:mm') : '—'}
+                                {r.date_time ? formatISTDateTime(r.date_time) : '—'}
                               </td>
                               <td className="px-4 py-3 font-medium">{tankRow?.name || r.tank_id || '—'}</td>
                               <td className="px-4 py-3">{fuelTypeLabel(r.fuel_type_id)}</td>
@@ -1346,6 +1389,100 @@ export default function PumpDetail() {
                             </tr>
                           )
                         })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Activity Tab */}
+            {activeDataTab === 'activity' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <FileText className="w-5 h-5 text-indigo-600" />
+                  Activity ({auditLogsTotal.toLocaleString('en-IN')})
+                </h3>
+                {dataLoading.activity ? (
+                  <div className="text-center py-8">Loading activity...</div>
+                ) : auditLogs.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No activity recorded for this pump</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {auditLogs.map((log) => (
+                      <div key={log.id} className="rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-100">
+                            {log.action_label || log.action}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900">{log.entity_label || log.entity_type}</span>
+                        </div>
+                        {log.reason && (
+                          <p className="text-sm text-gray-600 italic mb-2">"{log.reason}"</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
+                          <span className="inline-flex items-center gap-1">
+                            <User className="w-3.5 h-3.5" />
+                            {log.actor_name || 'System'}
+                          </span>
+                          <span className="inline-flex items-center gap-1" title={formatISTDateTime(log.created_at, { withSeconds: true })}>
+                            <Clock className="w-3.5 h-3.5" />
+                            {formatISTRelativeTime(log.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">{formatISTDateTime(log.created_at, { withSeconds: true })}</p>
+                      </div>
+                    ))}
+                    {auditLogs.length < auditLogsTotal && (
+                      <p className="text-xs text-gray-500 text-center pt-2">
+                        Showing latest {auditLogs.length} of {auditLogsTotal.toLocaleString('en-IN')} entries
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Error logs Tab */}
+            {activeDataTab === 'error-logs' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                  Error logs ({errorLogs.length})
+                </h3>
+                {dataLoading['error-logs'] ? (
+                  <div className="text-center py-8">Loading error logs...</div>
+                ) : errorLogs.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No errors logged for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700 w-48">When (IST)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Message</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {errorLogs.map((err) => (
+                          <tr key={err.id} className="hover:bg-gray-50 align-top">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="font-medium text-gray-900">{formatISTRelativeTime(err.created_at)}</div>
+                              <div className="text-xs text-gray-500">{formatISTDateTime(err.created_at, { withSeconds: true })}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="text-gray-900 whitespace-pre-wrap break-words">
+                                {err.error_message || '—'}
+                              </p>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1503,7 +1640,7 @@ export default function PumpDetail() {
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Created At</p>
                   <p className="font-semibold text-gray-900">
-                    {new Date(pump.created_at).toLocaleString()}
+                    {formatISTDateTime(pump.created_at)}
                   </p>
                 </div>
               </div>
@@ -1516,7 +1653,7 @@ export default function PumpDetail() {
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Last Active</p>
                   <p className="font-semibold text-gray-900">
                     {pump.last_active_at
-                      ? new Date(pump.last_active_at).toLocaleString()
+                      ? formatISTDateTime(pump.last_active_at)
                       : 'Never'}
                   </p>
                 </div>
@@ -1537,7 +1674,7 @@ export default function PumpDetail() {
                   </p>
                   {pump.payment_verified_at && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Verified on: {new Date(pump.payment_verified_at).toLocaleDateString()}
+                      Verified on: {formatISTDate(pump.payment_verified_at)}
                     </p>
                   )}
                 </div>
@@ -1576,7 +1713,7 @@ export default function PumpDetail() {
                     <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Start Date</p>
                     <p className="font-bold text-lg text-gray-900">
                       {pump.subscription_start_date
-                        ? new Date(pump.subscription_start_date).toLocaleDateString()
+                        ? formatISTDate(pump.subscription_start_date)
                         : 'N/A'}
                     </p>
                   </div>
@@ -1585,7 +1722,7 @@ export default function PumpDetail() {
                     <p className="text-xs font-semibold text-pink-600 uppercase tracking-wide mb-2">End Date</p>
                     <p className="font-bold text-lg text-gray-900">
                       {pump.subscription_start_date
-                        ? new Date(pump.subscription_end_date).toLocaleDateString()
+                        ? formatISTDate(pump.subscription_end_date)
                         : 'N/A'}
                     </p>
                   </div>
@@ -1888,7 +2025,7 @@ export default function PumpDetail() {
             <p><span className="font-medium">City/State:</span> {pump.city || '-'} / {pump.state || '-'}</p>
             <p><span className="font-medium">PIN:</span> {pump.pincode || 'N/A'}</p>
             <p><span className="font-medium">Status:</span> {pump.is_active ? 'Active' : 'Inactive'} | {pump.registration_status || 'N/A'}</p>
-            <p><span className="font-medium">Created:</span> {pump.created_at ? new Date(pump.created_at).toLocaleString() : 'N/A'}</p>
+            <p><span className="font-medium">Created:</span> {pump.created_at ? formatISTDateTime(pump.created_at) : 'N/A'}</p>
           </div>
 
           <p className="text-sm text-red-700 mb-2">

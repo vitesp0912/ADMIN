@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { Search, Building2, CheckCircle, XCircle, Gauge } from 'lucide-react'
+import { Search, Building2, CheckCircle, XCircle, Gauge, Phone } from 'lucide-react'
+import { formatISTDate, phoneToTel } from '../lib/datetime'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -24,7 +25,7 @@ export default function Pumps() {
   const [nozzles, setNozzles] = useState({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState('pending')
+  const [filterStatus, setFilterStatus] = useState('active')
   const [updating, setUpdating] = useState(null)
   const [message, setMessage] = useState({ type: '', text: '' })
 
@@ -48,10 +49,12 @@ export default function Pumps() {
 
       if (error) throw error
       setPumps(data || [])
-      
-      // Fetch meter readings for all pumps
+
       if (data && data.length > 0) {
         await fetchMeterReadingsForPumps(data.map(p => p.id))
+      } else {
+        setMeterReadings({})
+        setNozzles({})
       }
     } catch (error) {
       console.error('Error fetching pumps:', error)
@@ -62,54 +65,62 @@ export default function Pumps() {
 
   const fetchMeterReadingsForPumps = async (pumpIds) => {
     try {
-      // Fetch all meter readings for these pumps
-      const { data, error } = await supabase
-        .from('nozzle_reading')
-        .select('pump_id, opening_reading, closing_reading, date, nozzle_id, sales, rsp_applied, ro_price_applied')
-        .in('pump_id', pumpIds)
-        .order('date', { ascending: false })
+      // Per-pump count + latest: a single global query is capped (~1000 rows) and
+      // under-counts / picks wrong "latest" when many active pumps have readings.
+      const summaries = await Promise.all(
+        pumpIds.map(async (pumpId) => {
+          const [countRes, latestRes] = await Promise.all([
+            supabase
+              .from('nozzle_reading')
+              .select('id', { count: 'exact', head: true })
+              .eq('pump_id', pumpId),
+            supabase
+              .from('nozzle_reading')
+              .select('pump_id, opening_reading, closing_reading, date, nozzle_id, sales, rsp_applied, ro_price_applied, created_at')
+              .eq('pump_id', pumpId)
+              .order('date', { ascending: false })
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+          ])
+          return {
+            pumpId,
+            count: countRes.error ? 0 : (countRes.count ?? 0),
+            latest: latestRes.error ? null : latestRes.data,
+          }
+        })
+      )
 
-      if (error) {
-        console.error('Error fetching meter readings:', error)
-        return
-      }
-
-      // Group meter readings by pump_id and get the latest for each
       const readingsMap = {}
       const nozzleIdSet = new Set()
       const nozzlePumpSet = new Set()
-      if (data) {
-        data.forEach(reading => {
-          if (!readingsMap[reading.pump_id]) {
-            readingsMap[reading.pump_id] = {
-              count: 0,
-              latest: null,
-              latestValue: null
-            }
-          }
-          readingsMap[reading.pump_id].count++
-          // Store the latest reading (first one since sorted by date desc)
-          if (!readingsMap[reading.pump_id].latest) {
-            readingsMap[reading.pump_id].latest = reading.date
-            const closing = reading.closing_reading
-            const opening = reading.opening_reading
-            const preferred = closing !== null && closing !== undefined ? closing : opening
-            readingsMap[reading.pump_id].latestValue = preferred
-            readingsMap[reading.pump_id].latestNozzle = reading.nozzle_id
-            readingsMap[reading.pump_id].latestSales = reading.sales
-            readingsMap[reading.pump_id].latestRsp = reading.rsp_applied
-            readingsMap[reading.pump_id].latestRo = reading.ro_price_applied
-          }
-          if (reading.nozzle_id) {
-            nozzleIdSet.add(reading.nozzle_id)
-            nozzlePumpSet.add(reading.pump_id)
-          }
-        })
-      }
+
+      summaries.forEach(({ pumpId, count, latest }) => {
+        if (!count) return
+        const closing = latest?.closing_reading
+        const opening = latest?.opening_reading
+        const preferred = closing !== null && closing !== undefined ? closing : opening
+        readingsMap[pumpId] = {
+          count,
+          latest: latest?.date ?? null,
+          latestValue: preferred ?? null,
+          latestNozzle: latest?.nozzle_id ?? null,
+          latestSales: latest?.sales ?? null,
+          latestRsp: latest?.rsp_applied ?? null,
+          latestRo: latest?.ro_price_applied ?? null,
+        }
+        if (latest?.nozzle_id) {
+          nozzleIdSet.add(latest.nozzle_id)
+          nozzlePumpSet.add(pumpId)
+        }
+      })
+
       setMeterReadings(readingsMap)
 
       if (nozzleIdSet.size > 0 && nozzlePumpSet.size > 0) {
         await fetchNozzles(Array.from(nozzlePumpSet), Array.from(nozzleIdSet))
+      } else {
+        setNozzles({})
       }
     } catch (error) {
       console.error('Error fetching meter readings:', error)
@@ -369,7 +380,20 @@ export default function Pumps() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {pump.phone}
+                      <div className="flex items-center gap-2">
+                        <span>{pump.phone || 'N/A'}</span>
+                        {phoneToTel(pump.phone) && (
+                          <a
+                            href={`tel:${phoneToTel(pump.phone)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
+                            title={`Call ${pump.phone}`}
+                            aria-label={`Call ${pump.name}`}
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {pump.owner_name || 'N/A'}
@@ -441,7 +465,7 @@ export default function Pumps() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(pump.created_at).toLocaleDateString()}
+                      {formatISTDate(pump.created_at)}
                     </td>
                   </tr>
                 ))}

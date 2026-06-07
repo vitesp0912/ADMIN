@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Shield
 } from 'lucide-react'
+import { formatISTDate, formatISTDateTime, formatISTRelativeTime } from '../lib/datetime'
 
 // ============================================
 // AUDIT LOGS PAGE
@@ -293,51 +294,8 @@ export default function AuditLogs() {
   // FORMATTING HELPERS
   // ============================================
 
-  // Format timestamp to human-friendly format (IST)
-  const formatTime = (timestamp) => {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diffMs = now - date
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    const timeStr = date.toLocaleTimeString('en-IN', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Kolkata'
-    })
-
-    const dateStr = date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-      timeZone: 'Asia/Kolkata'
-    })
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} min ago`
-    if (diffDays === 0) return `Today, ${timeStr}`
-    if (diffDays === 1) return `Yesterday, ${timeStr}`
-    if (diffDays < 7) return `${diffDays} days ago`
-    
-    return `${dateStr}, ${timeStr}`
-  }
-
-  // Format full timestamp for details view
-  const formatFullTimestamp = (timestamp) => {
-    const date = new Date(timestamp)
-    return date.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Kolkata'
-    }) + ' IST'
-  }
+  const formatTime = formatISTRelativeTime
+  const formatFullTimestamp = (timestamp) => formatISTDateTime(timestamp, { withSeconds: true })
 
   // Render clean diff view for changes
   const renderChanges = (oldValues, newValues) => {
@@ -549,32 +507,12 @@ export default function AuditLogs() {
     
     const str = String(value)
     
-    // Check if it's an ISO date/time string
     if (/^\d{4}-\d{2}-\d{2}(T|\s)\d{2}:\d{2}/.test(str)) {
-      const date = new Date(str)
-      if (!isNaN(date.getTime())) {
-        return date.toLocaleString('en-IN', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-          timeZone: 'Asia/Kolkata'
-        })
-      }
+      return formatISTDateTime(str)
     }
-    
-    // Check if it's just a date (YYYY-MM-DD)
+
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-      const date = new Date(str + 'T00:00:00')
-      if (!isNaN(date.getTime())) {
-        return date.toLocaleDateString('en-IN', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric'
-        })
-      }
+      return formatISTDate(str)
     }
     
     return str
