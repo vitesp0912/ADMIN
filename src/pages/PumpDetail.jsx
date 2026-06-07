@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X } from 'lucide-react'
 import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 
 // Helper function to convert text to Title Case
@@ -16,6 +16,11 @@ const toTitleCase = (str) => {
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+const emptyNoteForm = {
+  id: null,
+  body: '',
 }
 
 export default function PumpDetail() {
@@ -84,6 +89,12 @@ export default function PumpDetail() {
   const [auditLogs, setAuditLogs] = useState([])
   const [auditLogsTotal, setAuditLogsTotal] = useState(0)
   const [errorLogs, setErrorLogs] = useState([])
+  const [pumpNotes, setPumpNotes] = useState([])
+  const [noteForm, setNoteForm] = useState(emptyNoteForm)
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteDeletingId, setNoteDeletingId] = useState(null)
+  const [noteFormError, setNoteFormError] = useState('')
+  const [noteFormOpen, setNoteFormOpen] = useState(false)
 
   // Management form state
   const [formData, setFormData] = useState({
@@ -383,6 +394,21 @@ export default function PumpDetail() {
           break
         }
 
+        case 'notes': {
+          const { data: notesData, error: notesErr } = await supabase
+            .from('pump_notes')
+            .select('*')
+            .eq('pump_id', id)
+            .order('created_at', { ascending: false })
+            .limit(500)
+          if (notesErr) {
+            console.error('Pump notes fetch error:', notesErr)
+            throw notesErr
+          }
+          setPumpNotes(notesData || [])
+          break
+        }
+
         case 'activity': {
           const [{ data: logData, error: logErr }, { data: countData, error: countErr }] = await Promise.all([
             supabase.rpc('get_audit_logs', {
@@ -471,6 +497,83 @@ export default function PumpDetail() {
   const fuelTypeLabel = (ftId) => {
     const fuel = fuelTypes[ftId]
     return fuel?.name || fuel?.fuel_type || fuel?.title || ftId || 'N/A'
+  }
+
+  const resetNoteForm = () => {
+    setNoteForm(emptyNoteForm)
+    setNoteFormError('')
+    setNoteFormOpen(false)
+  }
+
+  const openNoteForm = () => {
+    setNoteForm(emptyNoteForm)
+    setNoteFormError('')
+    setNoteFormOpen(true)
+  }
+
+  const startEditNote = (note) => {
+    setNoteForm({
+      id: note.id,
+      body: note.body || '',
+    })
+    setNoteFormError('')
+    setNoteFormOpen(true)
+  }
+
+  const handleSaveNote = async () => {
+    const body = noteForm.body?.trim()
+    if (!body) {
+      setNoteFormError('Write a note before saving.')
+      return
+    }
+
+    setNoteSaving(true)
+    setNoteFormError('')
+    try {
+      const followUpIso = new Date().toISOString()
+
+      if (noteForm.id) {
+        const { error } = await supabase
+          .from('pump_notes')
+          .update({
+            body,
+            note_type: 'follow_up',
+            follow_up_at: followUpIso,
+          })
+          .eq('id', noteForm.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('pump_notes').insert({
+          pump_id: id,
+          body,
+          note_type: 'follow_up',
+          follow_up_at: followUpIso,
+        })
+        if (error) throw error
+      }
+
+      resetNoteForm()
+      await fetchTabData('notes')
+    } catch (e) {
+      setNoteFormError(e.message || 'Failed to save note')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
+  const handleDeleteNote = async (noteId) => {
+    if (!confirm('Delete this note?')) return
+    setNoteDeletingId(noteId)
+    try {
+      const { error } = await supabase.from('pump_notes').delete().eq('id', noteId)
+      if (error) throw error
+      if (noteForm.id === noteId) resetNoteForm()
+      await fetchTabData('notes')
+    } catch (e) {
+      setNoteFormError(e.message || 'Failed to delete note')
+    } finally {
+      setNoteDeletingId(null)
+    }
   }
 
   const handleSaveChanges = async () => {
@@ -789,6 +892,7 @@ export default function PumpDetail() {
                   { id: 'daily-testing', label: 'Daily Testing' },
                   { id: 'tanks', label: 'Tanks' },
                   { id: 'fuel-receipts', label: 'Fuel receipts' },
+                  { id: 'notes', label: 'Notes' },
                   { id: 'activity', label: 'Activity' },
                   { id: 'error-logs', label: 'Error logs' },
                 ].map((tab) => (
@@ -1391,6 +1495,156 @@ export default function PumpDetail() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Notes Tab */}
+            {activeDataTab === 'notes' && (
+              <div className="min-w-0">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 min-w-0">
+                    <StickyNote className="w-5 h-5 text-violet-600 shrink-0" />
+                    <span className="truncate">Notes & follow-ups ({pumpNotes.length})</span>
+                  </h3>
+                  {!noteFormOpen && (
+                    <button
+                      type="button"
+                      onClick={openNoteForm}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 active:bg-violet-800 shadow-sm transition-colors"
+                    >
+                      <Plus className="w-4 h-4 shrink-0" />
+                      Add follow-up
+                    </button>
+                  )}
+                </div>
+
+                {noteFormOpen && (
+                  <div className="mb-5 sm:mb-6 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white shadow-md overflow-hidden">
+                    <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5 border-b border-violet-100 bg-white/80">
+                      <p className="text-sm sm:text-base font-semibold text-gray-900">
+                        {noteForm.id ? 'Edit follow-up' : 'New follow-up'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={resetNoteForm}
+                        disabled={noteSaving}
+                        className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50"
+                        aria-label="Close form"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <div className="p-4 sm:p-5">
+                      <textarea
+                        value={noteForm.body}
+                        onChange={(e) => setNoteForm((f) => ({ ...f, body: e.target.value }))}
+                        rows={5}
+                        placeholder="Follow-up details, call summary, WhatsApp message, etc."
+                        className="w-full min-h-[120px] px-3 py-3 sm:px-4 border border-gray-300 rounded-xl bg-white text-sm sm:text-base leading-relaxed focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                        disabled={noteSaving}
+                        autoFocus
+                      />
+                      {noteFormError && (
+                        <p className="text-sm text-red-600 mt-3">{noteFormError}</p>
+                      )}
+                      <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap gap-2 sm:gap-3 mt-4">
+                        <button
+                          type="button"
+                          onClick={resetNoteForm}
+                          disabled={noteSaving}
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveNote}
+                          disabled={noteSaving}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 shadow-sm"
+                        >
+                          <Save className="w-4 h-4" />
+                          {noteSaving ? 'Saving...' : noteForm.id ? 'Update follow-up' : 'Save follow-up'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {dataLoading.notes ? (
+                  <div className="text-center py-10 sm:py-12 text-gray-500">Loading notes...</div>
+                ) : pumpNotes.length === 0 ? (
+                  <div className="text-center py-10 sm:py-14 px-4 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-300">
+                    <StickyNote className="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-600 font-medium text-sm sm:text-base">No follow-ups yet for this pump</p>
+                    {!noteFormOpen && (
+                      <button
+                        type="button"
+                        onClick={openNoteForm}
+                        className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add first follow-up
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3 sm:space-y-4">
+                    {pumpNotes.map((note) => {
+                      const isEditing = noteForm.id === note.id && noteFormOpen
+                      const followUpTime = formatISTDateTime(note.follow_up_at || note.created_at)
+                      return (
+                        <article
+                          key={note.id}
+                          className={`relative rounded-2xl border bg-white shadow-sm transition-all overflow-hidden ${
+                            isEditing
+                              ? 'border-violet-400 ring-2 ring-violet-200 shadow-md'
+                              : 'border-gray-200 hover:border-violet-200 hover:shadow-md'
+                          }`}
+                        >
+                          <div className="absolute left-0 top-0 bottom-0 w-1 sm:w-1.5 bg-violet-500 rounded-l-2xl" aria-hidden />
+                          <div className="pl-4 pr-3 py-4 sm:pl-5 sm:pr-5 sm:py-5">
+                            <p className="text-sm sm:text-[15px] text-gray-900 whitespace-pre-wrap break-words leading-relaxed">
+                              {note.body}
+                            </p>
+                            <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                              <div className="min-w-0 flex-1">
+                                <span className="inline-flex items-start sm:items-center gap-1.5 text-xs sm:text-sm text-violet-800 font-medium">
+                                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 mt-0.5 sm:mt-0" />
+                                  <span className="break-words">{followUpTime}</span>
+                                </span>
+                                {note.updated_at && note.updated_at !== note.created_at && (
+                                  <p className="text-xs text-gray-400 mt-1 pl-5 sm:pl-0">
+                                    Edited {formatISTRelativeTime(note.updated_at)}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex flex-row items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditNote(note)}
+                                  className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[11px] sm:text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 disabled:opacity-50 leading-none"
+                                  disabled={noteSaving || noteDeletingId === note.id}
+                                >
+                                  <Pencil className="w-3 h-3 shrink-0" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteNote(note.id)}
+                                  className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[11px] sm:text-xs font-medium text-red-700 bg-red-50 border border-red-100 hover:bg-red-100 disabled:opacity-50 leading-none"
+                                  disabled={noteDeletingId === note.id}
+                                >
+                                  <Trash2 className="w-3 h-3 shrink-0" />
+                                  {noteDeletingId === note.id ? '…' : 'Delete'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      )
+                    })}
                   </div>
                 )}
               </div>

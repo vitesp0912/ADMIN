@@ -285,6 +285,34 @@ CREATE POLICY "Authenticated users can delete fuel_receipts" ON fuel_receipts
   USING (auth.role() = 'authenticated');
 
 -- ============================================
+-- Admin Panel RLS Policies for Pump Notes Table
+-- ============================================
+-- Requires: public.pump_notes created (see pump_notes_table.sql)
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select pump_notes" ON pump_notes;
+DROP POLICY IF EXISTS "Authenticated users can insert pump_notes" ON pump_notes;
+DROP POLICY IF EXISTS "Authenticated users can update pump_notes" ON pump_notes;
+DROP POLICY IF EXISTS "Authenticated users can delete pump_notes" ON pump_notes;
+
+CREATE POLICY "Authenticated users can select pump_notes" ON pump_notes
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert pump_notes" ON pump_notes
+  FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update pump_notes" ON pump_notes
+  FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete pump_notes" ON pump_notes
+  FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
 -- Check current RLS policies
 -- ============================================
 -- Run this to see current policies:
@@ -300,4 +328,5 @@ CREATE POLICY "Authenticated users can delete fuel_receipts" ON fuel_receipts
 -- SELECT * FROM pg_policies WHERE tablename = 'udhar_ledger';
 -- SELECT * FROM pg_policies WHERE tablename = 'tanks';
 -- SELECT * FROM pg_policies WHERE tablename = 'fuel_receipts';
+-- SELECT * FROM pg_policies WHERE tablename = 'pump_notes';
 
