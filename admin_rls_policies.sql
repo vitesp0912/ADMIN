@@ -313,6 +313,48 @@ CREATE POLICY "Authenticated users can delete pump_notes" ON pump_notes
   USING (auth.role() = 'authenticated');
 
 -- ============================================
+-- Admin Panel RLS Policies for Treasury Buckets Table
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select treasury_buckets" ON treasury_buckets;
+DROP POLICY IF EXISTS "Authenticated users can insert treasury_buckets" ON treasury_buckets;
+DROP POLICY IF EXISTS "Authenticated users can update treasury_buckets" ON treasury_buckets;
+DROP POLICY IF EXISTS "Authenticated users can delete treasury_buckets" ON treasury_buckets;
+
+CREATE POLICY "Authenticated users can select treasury_buckets" ON treasury_buckets
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert treasury_buckets" ON treasury_buckets
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update treasury_buckets" ON treasury_buckets
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete treasury_buckets" ON treasury_buckets
+  FOR DELETE USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- Admin Panel RLS Policies for Treasury Ledger Table
+-- ============================================
+
+DROP POLICY IF EXISTS "Authenticated users can select treasury_ledger" ON treasury_ledger;
+DROP POLICY IF EXISTS "Authenticated users can insert treasury_ledger" ON treasury_ledger;
+DROP POLICY IF EXISTS "Authenticated users can update treasury_ledger" ON treasury_ledger;
+DROP POLICY IF EXISTS "Authenticated users can delete treasury_ledger" ON treasury_ledger;
+
+CREATE POLICY "Authenticated users can select treasury_ledger" ON treasury_ledger
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert treasury_ledger" ON treasury_ledger
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can update treasury_ledger" ON treasury_ledger
+  FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can delete treasury_ledger" ON treasury_ledger
+  FOR DELETE USING (auth.role() = 'authenticated');
+
+-- ============================================
 -- Check current RLS policies
 -- ============================================
 -- Run this to see current policies:
@@ -329,4 +371,6 @@ CREATE POLICY "Authenticated users can delete pump_notes" ON pump_notes
 -- SELECT * FROM pg_policies WHERE tablename = 'tanks';
 -- SELECT * FROM pg_policies WHERE tablename = 'fuel_receipts';
 -- SELECT * FROM pg_policies WHERE tablename = 'pump_notes';
+-- SELECT * FROM pg_policies WHERE tablename = 'treasury_buckets';
+-- SELECT * FROM pg_policies WHERE tablename = 'treasury_ledger';
 

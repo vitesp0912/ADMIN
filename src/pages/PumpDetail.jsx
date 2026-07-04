@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight } from 'lucide-react'
 import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 
 // Helper function to convert text to Title Case
@@ -23,6 +23,18 @@ const emptyNoteForm = {
   body: '',
 }
 
+const BUCKET_TYPE_LABELS = {
+  IN_HAND_CASH: 'In-hand cash',
+  CURRENT_ACCOUNT: 'Current account',
+  COMPANY_ACCOUNT: 'Company account',
+}
+
+const formatInr = (value) => {
+  const n = parseFloat(value)
+  if (Number.isNaN(n)) return '—'
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 export default function PumpDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -33,15 +45,15 @@ export default function PumpDetail() {
   const [nozzles, setNozzles] = useState({})
   const [fuelTypes, setFuelTypes] = useState({})
   const [expenses, setExpenses] = useState([])
-  const [dailyTesting, setDailyTesting] = useState([])
   const [inventory, setInventory] = useState([])
   const [customers, setCustomers] = useState([])
   const [udharLedger, setUdharLedger] = useState([])
   const [ledgerCustomers, setLedgerCustomers] = useState({})
   const [ledgerStaff, setLedgerStaff] = useState({})
   const [loading, setLoading] = useState(true)
+  const [treasuryBuckets, setTreasuryBuckets] = useState([])
+  const [treasuryLedger, setTreasuryLedger] = useState([])
 
-  /** Udhar rows grouped by customer; each group sorted newest business date first. */
   const udharLedgerByCustomer = useMemo(() => {
     const byCustomer = new Map()
     for (const row of udharLedger) {
@@ -68,6 +80,68 @@ export default function PumpDetail() {
     groups.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
     return groups
   }, [udharLedger, ledgerCustomers])
+
+  const treasuryBucketById = useMemo(() => {
+    const map = {}
+    treasuryBuckets.forEach((b) => {
+      map[b.id] = b
+    })
+    return map
+  }, [treasuryBuckets])
+
+  const treasuryBucketsTotal = useMemo(
+    () => treasuryBuckets.reduce((sum, b) => sum + parseFloat(b.current_balance || 0), 0),
+    [treasuryBuckets]
+  )
+
+  const treasuryLedgerByBucket = useMemo(() => {
+    const groups = new Map()
+
+    const ensureGroup = (bucketId) => {
+      if (!bucketId) return null
+      if (!groups.has(bucketId)) {
+        const bucket = treasuryBucketById[bucketId] || {
+          id: bucketId,
+          name: 'Unknown bucket',
+          bucket_type: '',
+          display_order: 9999,
+        }
+        groups.set(bucketId, { bucket, transactions: [] })
+      }
+      return groups.get(bucketId)
+    }
+
+    treasuryLedger.forEach((tx) => {
+      if (tx.from_bucket_id) {
+        ensureGroup(tx.from_bucket_id)?.transactions.push({ tx, direction: 'out' })
+      }
+      if (tx.to_bucket_id) {
+        ensureGroup(tx.to_bucket_id)?.transactions.push({ tx, direction: 'in' })
+      }
+    })
+
+    groups.forEach((group) => {
+      group.transactions.sort((a, b) => {
+        const dateCmp = String(b.tx.business_date).localeCompare(String(a.tx.business_date))
+        if (dateCmp !== 0) return dateCmp
+        return String(b.tx.created_at).localeCompare(String(a.tx.created_at))
+      })
+    })
+
+    const bucketOrder = new Map(
+      treasuryBuckets.map((b, index) => [b.id, b.display_order ?? index])
+    )
+
+    return [...groups.values()]
+      .filter((group) => group.transactions.length > 0)
+      .sort((a, b) => {
+        const orderA = bucketOrder.get(a.bucket.id) ?? a.bucket.display_order ?? 9999
+        const orderB = bucketOrder.get(b.bucket.id) ?? b.bucket.display_order ?? 9999
+        if (orderA !== orderB) return orderA - orderB
+        return (a.bucket.name || '').localeCompare(b.bucket.name || '')
+      })
+  }, [treasuryLedger, treasuryBuckets, treasuryBucketById])
+
   const [activeTab, setActiveTab] = useState('details')
   const [activeDataTab, setActiveDataTab] = useState('users')
   const [saving, setSaving] = useState(false)
@@ -235,29 +309,6 @@ export default function PumpDetail() {
           setExpenses(expensesData || [])
           break
 
-        case 'daily-testing':
-          const { data: testingData, error: testingError } = await supabase
-            .from('nozzle_reading')
-            .select('*')
-            .eq('pump_id', id)
-            .order('date', { ascending: false })
-            .limit(500)
-          if (testingError) {
-            console.error('Daily testing fetch error:', testingError)
-            throw testingError
-          }
-          console.log(`Fetched ${testingData?.length || 0} nozzle testing records:`, testingData)
-          setDailyTesting(testingData || [])
-
-          // Fetch nozzle names for daily testing rows
-          const testingNozzleIds = [...new Set((testingData || [])
-            .map((t) => t.nozzle_id)
-            .filter(Boolean))]
-          if (testingNozzleIds.length > 0) {
-            await fetchNozzlesForPump(id, testingNozzleIds)
-          }
-          break
-
         case 'inventory':
           const { data: inventoryData, error: inventoryError } = await supabase
             .from('inventory')
@@ -406,6 +457,50 @@ export default function PumpDetail() {
             throw notesErr
           }
           setPumpNotes(notesData || [])
+          break
+        }
+
+        case 'bank-accounts': {
+          const { data, error } = await supabase
+            .from('treasury_buckets')
+            .select('*')
+            .eq('pump_id', id)
+            .order('display_order', { ascending: true })
+            .order('name', { ascending: true })
+          if (error) {
+            console.error('Treasury buckets fetch error:', error)
+            throw error
+          }
+          setTreasuryBuckets(data || [])
+          break
+        }
+
+        case 'treasury-transactions': {
+          const [bucketsRes, ledgerRes] = await Promise.all([
+            supabase
+              .from('treasury_buckets')
+              .select('*')
+              .eq('pump_id', id)
+              .order('display_order', { ascending: true }),
+            supabase
+              .from('treasury_ledger')
+              .select('*')
+              .eq('pump_id', id)
+              .is('deleted_at', null)
+              .order('business_date', { ascending: false })
+              .order('created_at', { ascending: false })
+              .limit(500),
+          ])
+          if (bucketsRes.error) {
+            console.error('Treasury buckets (for ledger) fetch error:', bucketsRes.error)
+            throw bucketsRes.error
+          }
+          if (ledgerRes.error) {
+            console.error('Treasury ledger fetch error:', ledgerRes.error)
+            throw ledgerRes.error
+          }
+          setTreasuryBuckets(bucketsRes.data || [])
+          setTreasuryLedger(ledgerRes.data || [])
           break
         }
 
@@ -889,9 +984,10 @@ export default function PumpDetail() {
                   { id: 'sales', label: 'Digital Sales' },
                   { id: 'meter-readings', label: 'Meter Readings' },
                   { id: 'expenses', label: 'Expenses' },
-                  { id: 'daily-testing', label: 'Daily Testing' },
                   { id: 'tanks', label: 'Tanks' },
                   { id: 'fuel-receipts', label: 'Fuel receipts' },
+                  { id: 'bank-accounts', label: 'Bank accounts' },
+                  { id: 'treasury-transactions', label: 'Transactions' },
                   { id: 'notes', label: 'Notes' },
                   { id: 'activity', label: 'Activity' },
                   { id: 'error-logs', label: 'Error logs' },
@@ -1268,6 +1364,7 @@ export default function PumpDetail() {
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Opening</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Closing</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Sales (L)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Testing (L)</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">RSP Applied</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">RO Price</th>
                         </tr>
@@ -1287,9 +1384,16 @@ export default function PumpDetail() {
                             })()}</td>
                             <td className="px-4 py-3 font-medium">{parseFloat(reading.opening_reading).toFixed(2)}</td>
                             <td className="px-4 py-3 font-medium">{parseFloat(reading.closing_reading).toFixed(2)}</td>
-                            <td className="px-4 py-3 font-bold">{parseFloat(reading.sales).toFixed(2)}</td>
-                            <td className="px-4 py-3 font-medium">₹{parseFloat(reading.rsp_applied).toFixed(3)}</td>
-                            <td className="px-4 py-3 font-medium">₹{parseFloat(reading.ro_price_applied).toFixed(3)}</td>
+                            <td className="px-4 py-3 font-bold">{reading.sales != null ? parseFloat(reading.sales).toFixed(2) : '—'}</td>
+                            <td className="px-4 py-3 font-medium tabular-nums">
+                              {parseFloat(reading.testing_amount_liters || 0).toFixed(3)}
+                            </td>
+                            <td className="px-4 py-3 font-medium">
+                              {reading.rsp_applied != null ? `₹${parseFloat(reading.rsp_applied).toFixed(3)}` : '—'}
+                            </td>
+                            <td className="px-4 py-3 font-medium">
+                              {reading.ro_price_applied != null ? `₹${parseFloat(reading.ro_price_applied).toFixed(3)}` : '—'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1342,46 +1446,7 @@ export default function PumpDetail() {
               </div>
             )}
 
-            {/* Daily Testing Tab */}
-            {activeDataTab === 'daily-testing' && (
-              <div>
-                {dataLoading['daily-testing'] ? (
-                  <div className="text-center py-8">Loading daily testing...</div>
-                ) : dailyTesting.length === 0 ? (
-                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                    <Gauge className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-gray-500 font-medium">No nozzle testing records found for this pump</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Nozzle</th>
-                          <th className="px-4 py-3 text-left font-medium text-gray-700">Testing Amount (L)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {dailyTesting.map((entry) => (
-                          <tr key={entry.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">{formatISTDate(entry.date)}</td>
-                            <td className="px-4 py-3 font-medium">{(() => {
-                              const key = `${entry.pump_id}:${entry.nozzle_id}`
-                              const nozzle = nozzles[key]
-                              return nozzle?.nozzle_name || nozzle?.name || entry.nozzle_id || 'N/A'
-                            })()}</td>
-                            <td className="px-4 py-3 font-medium">{parseFloat(entry.testing_amount_liters || 0).toFixed(3)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Tanks Tab (read-only) */}
+            {/* Tanks Tab */}
             {activeDataTab === 'tanks' && (
               <div>
                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
@@ -1406,7 +1471,6 @@ export default function PumpDetail() {
                           <th className="px-4 py-3 text-right font-medium text-gray-700">Capacity (L)</th>
                           <th className="px-4 py-3 text-right font-medium text-gray-700">Current (L)</th>
                           <th className="px-4 py-3 text-right font-medium text-gray-700">Initial (L)</th>
-                          <th className="px-4 py-3 text-right font-medium text-gray-700">Dip (cm)</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Active</th>
                         </tr>
                       </thead>
@@ -1418,7 +1482,6 @@ export default function PumpDetail() {
                             <td className="px-4 py-3 text-right tabular-nums">{parseFloat(t.capacity_liters || 0).toFixed(3)}</td>
                             <td className="px-4 py-3 text-right tabular-nums">{parseFloat(t.current_volume_liters || 0).toFixed(3)}</td>
                             <td className="px-4 py-3 text-right tabular-nums">{parseFloat(t.initial_volume_liters || 0).toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right tabular-nums">{parseFloat(t.initial_dip_cm || 0).toFixed(2)}</td>
                             <td className="px-4 py-3">
                               {t.is_active ? (
                                 <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Yes</span>
@@ -1495,6 +1558,200 @@ export default function PumpDetail() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bank accounts Tab */}
+            {activeDataTab === 'bank-accounts' && (
+              <div className="min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-emerald-600 shrink-0" />
+                    Bank accounts & buckets ({treasuryBuckets.length})
+                  </h3>
+                  {treasuryBuckets.length > 0 && (
+                    <p className="text-sm font-semibold text-emerald-800 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg">
+                      Total balance: {formatInr(treasuryBucketsTotal)}
+                    </p>
+                  )}
+                </div>
+                {dataLoading['bank-accounts'] ? (
+                  <div className="text-center py-8">Loading bank accounts...</div>
+                ) : treasuryBuckets.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Wallet className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No treasury buckets for this pump</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-5 lg:hidden">
+                      {treasuryBuckets.map((bucket) => (
+                        <article
+                          key={bucket.id}
+                          className={`rounded-xl border p-4 shadow-sm ${
+                            bucket.bucket_type === 'IN_HAND_CASH'
+                              ? 'border-amber-200 bg-amber-50/40'
+                              : 'border-gray-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h4 className="font-semibold text-gray-900 text-sm">{bucket.name}</h4>
+                            {!bucket.is_active && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Inactive</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mb-3">
+                            {BUCKET_TYPE_LABELS[bucket.bucket_type] || toTitleCase(bucket.bucket_type)}
+                          </p>
+                          <p className="text-lg font-bold text-emerald-800 tabular-nums">{formatInr(bucket.current_balance)}</p>
+                          {(bucket.bank_name || bucket.company_name) && (
+                            <p className="text-xs text-gray-600 mt-2 truncate">
+                              {[bucket.bank_name, bucket.company_name].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                          {bucket.account_number_last_four && (
+                            <p className="text-xs text-gray-500 mt-1">···· {bucket.account_number_last_four}</p>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                    <div className="hidden lg:block overflow-x-auto rounded-lg border border-gray-200">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Type</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Bank</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Company</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Account</th>
+                            <th className="px-4 py-3 text-right font-medium text-gray-700">Current balance</th>
+                            <th className="px-4 py-3 text-left font-medium text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {treasuryBuckets.map((bucket) => (
+                            <tr
+                              key={bucket.id}
+                              className={`hover:bg-gray-50 ${
+                                bucket.bucket_type === 'IN_HAND_CASH' ? 'bg-amber-50/30' : ''
+                              }`}
+                            >
+                              <td className="px-4 py-3 font-medium text-gray-900">{bucket.name}</td>
+                              <td className="px-4 py-3">
+                                {BUCKET_TYPE_LABELS[bucket.bucket_type] || toTitleCase(bucket.bucket_type)}
+                              </td>
+                              <td className="px-4 py-3">{bucket.bank_name || '—'}</td>
+                              <td className="px-4 py-3">{bucket.company_name || '—'}</td>
+                              <td className="px-4 py-3 tabular-nums">
+                                {bucket.account_number_last_four ? `···· ${bucket.account_number_last_four}` : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right font-bold text-emerald-800 tabular-nums">
+                                {formatInr(bucket.current_balance)}
+                              </td>
+                              <td className="px-4 py-3">
+                                {bucket.is_active ? (
+                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Active</span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Inactive</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Treasury transactions Tab */}
+            {activeDataTab === 'treasury-transactions' && (
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <ArrowLeftRight className="w-5 h-5 text-sky-600 shrink-0" />
+                  Transactions ({treasuryLedger.length})
+                </h3>
+                {dataLoading['treasury-transactions'] ? (
+                  <div className="text-center py-8">Loading transactions...</div>
+                ) : treasuryLedger.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <ArrowLeftRight className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No transactions for this pump</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {treasuryLedgerByBucket.map(({ bucket, transactions }) => (
+                      <section
+                        key={bucket.id}
+                        className={`rounded-xl border overflow-hidden ${
+                          bucket.bucket_type === 'IN_HAND_CASH'
+                            ? 'border-amber-200 bg-amber-50/20'
+                            : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 border-b border-gray-200 bg-gray-50/80">
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-gray-900 truncate">{bucket.name}</h4>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {BUCKET_TYPE_LABELS[bucket.bucket_type] || (bucket.bucket_type ? toTitleCase(bucket.bucket_type) : 'Bucket')}
+                              {' · '}
+                              {transactions.length} transaction{transactions.length === 1 ? '' : 's'}
+                            </p>
+                          </div>
+                          {bucket.current_balance != null && (
+                            <p className="text-sm font-bold text-emerald-800 tabular-nums shrink-0">
+                              Balance: {formatInr(bucket.current_balance)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-white border-b border-gray-100">
+                              <tr>
+                                <th className="px-3 sm:px-4 py-2.5 text-left font-medium text-gray-700">Date</th>
+                                <th className="px-3 sm:px-4 py-2.5 text-left font-medium text-gray-700">Type</th>
+                                <th className="px-3 sm:px-4 py-2.5 text-left font-medium text-gray-700">Flow</th>
+                                <th className="px-3 sm:px-4 py-2.5 text-right font-medium text-gray-700">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {transactions.map(({ tx, direction }) => (
+                                  <tr key={`${bucket.id}-${tx.id}-${direction}`} className="hover:bg-gray-50/80 align-top">
+                                    <td className="px-3 sm:px-4 py-3 whitespace-nowrap">
+                                      <div>{formatISTDate(tx.business_date)}</div>
+                                      <div className="text-xs text-gray-400">{formatISTDateTime(tx.created_at)}</div>
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3 font-medium max-w-[140px]">
+                                      {toTitleCase(tx.transaction_type)}
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3">
+                                      <span
+                                        className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
+                                          direction === 'in'
+                                            ? 'bg-green-100 text-green-800'
+                                            : 'bg-red-100 text-red-800'
+                                        }`}
+                                      >
+                                        {direction === 'in' ? 'In' : 'Out'}
+                                      </span>
+                                    </td>
+                                    <td
+                                      className={`px-3 sm:px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap ${
+                                        direction === 'in' ? 'text-green-700' : 'text-red-700'
+                                      }`}
+                                    >
+                                      {direction === 'in' ? '+' : '−'}{formatInr(tx.amount)}
+                                    </td>
+                                  </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    ))}
                   </div>
                 )}
               </div>

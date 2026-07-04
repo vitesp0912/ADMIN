@@ -30,6 +30,7 @@ export default function Pumps() {
   const [message, setMessage] = useState({ type: '', text: '' })
 
   useEffect(() => {
+    setLoading(true)
     fetchPumps()
   }, [filterStatus])
 
@@ -51,7 +52,7 @@ export default function Pumps() {
       setPumps(data || [])
 
       if (data && data.length > 0) {
-        await fetchMeterReadingsForPumps(data.map(p => p.id))
+        fetchMeterReadingsForPumps(data.map(p => p.id))
       } else {
         setMeterReadings({})
         setNozzles({})
