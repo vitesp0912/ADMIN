@@ -2,27 +2,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { Search, Building2, CheckCircle, XCircle, Gauge, Phone } from 'lucide-react'
-import { formatISTDate, phoneToTel } from '../lib/datetime'
-
-// Helper function to convert text to Title Case
-const toTitleCase = (str) => {
-  if (!str) return str
-  return str
-    .toString()
-    .toLowerCase()
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
+import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 
 export default function Pumps() {
   const navigate = useNavigate()
   const [pumps, setPumps] = useState([])
   const [meterReadings, setMeterReadings] = useState({})
-  const [nozzles, setNozzles] = useState({})
+  const [lastActivity, setLastActivity] = useState({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('active')
@@ -52,10 +38,12 @@ export default function Pumps() {
       setPumps(data || [])
 
       if (data && data.length > 0) {
-        fetchMeterReadingsForPumps(data.map(p => p.id))
+        const pumpIds = data.map((p) => p.id)
+        fetchMeterReadingsForPumps(pumpIds)
+        fetchLastActivityForPumps(pumpIds)
       } else {
         setMeterReadings({})
-        setNozzles({})
+        setLastActivity({})
       }
     } catch (error) {
       console.error('Error fetching pumps:', error)
@@ -66,89 +54,46 @@ export default function Pumps() {
 
   const fetchMeterReadingsForPumps = async (pumpIds) => {
     try {
-      // Per-pump count + latest: a single global query is capped (~1000 rows) and
-      // under-counts / picks wrong "latest" when many active pumps have readings.
       const summaries = await Promise.all(
         pumpIds.map(async (pumpId) => {
-          const [countRes, latestRes] = await Promise.all([
-            supabase
-              .from('nozzle_reading')
-              .select('id', { count: 'exact', head: true })
-              .eq('pump_id', pumpId),
-            supabase
-              .from('nozzle_reading')
-              .select('pump_id, opening_reading, closing_reading, date, nozzle_id, sales, rsp_applied, ro_price_applied, created_at')
-              .eq('pump_id', pumpId)
-              .order('date', { ascending: false })
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle(),
-          ])
-          return {
-            pumpId,
-            count: countRes.error ? 0 : (countRes.count ?? 0),
-            latest: latestRes.error ? null : latestRes.data,
-          }
+          const { count, error } = await supabase
+            .from('nozzle_reading')
+            .select('id', { count: 'exact', head: true })
+            .eq('pump_id', pumpId)
+          return { pumpId, count: error ? 0 : (count ?? 0) }
         })
       )
 
       const readingsMap = {}
-      const nozzleIdSet = new Set()
-      const nozzlePumpSet = new Set()
-
-      summaries.forEach(({ pumpId, count, latest }) => {
-        if (!count) return
-        const closing = latest?.closing_reading
-        const opening = latest?.opening_reading
-        const preferred = closing !== null && closing !== undefined ? closing : opening
-        readingsMap[pumpId] = {
-          count,
-          latest: latest?.date ?? null,
-          latestValue: preferred ?? null,
-          latestNozzle: latest?.nozzle_id ?? null,
-          latestSales: latest?.sales ?? null,
-          latestRsp: latest?.rsp_applied ?? null,
-          latestRo: latest?.ro_price_applied ?? null,
-        }
-        if (latest?.nozzle_id) {
-          nozzleIdSet.add(latest.nozzle_id)
-          nozzlePumpSet.add(pumpId)
-        }
+      summaries.forEach(({ pumpId, count }) => {
+        if (count > 0) readingsMap[pumpId] = { count }
       })
-
       setMeterReadings(readingsMap)
-
-      if (nozzleIdSet.size > 0 && nozzlePumpSet.size > 0) {
-        await fetchNozzles(Array.from(nozzlePumpSet), Array.from(nozzleIdSet))
-      } else {
-        setNozzles({})
-      }
     } catch (error) {
       console.error('Error fetching meter readings:', error)
     }
   }
 
-  const fetchNozzles = async (pumpIds, nozzleIds) => {
+  const fetchLastActivityForPumps = async (pumpIds) => {
     try {
-      const { data, error } = await supabase
-        .from('nozzle_info')
-        .select('*')
-        .in('pump_id', pumpIds)
-        .in('nozzle_id', nozzleIds)
+      const summaries = await Promise.all(
+        pumpIds.map(async (pumpId) => {
+          const { data, error } = await supabase.rpc('get_audit_logs', {
+            p_pump_id: pumpId,
+            p_limit: 1,
+            p_offset: 0,
+          })
+          return { pumpId, log: error ? null : (data?.[0] ?? null) }
+        })
+      )
 
-      if (error) {
-        console.error('Error fetching nozzle info:', error)
-        return
-      }
-
-      const map = {}
-      data?.forEach((nozzle) => {
-        const key = `${nozzle.pump_id}:${nozzle.nozzle_id}`
-        map[key] = nozzle
+      const activityMap = {}
+      summaries.forEach(({ pumpId, log }) => {
+        if (log) activityMap[pumpId] = log
       })
-      setNozzles(map)
-    } catch (err) {
-      console.error('Error fetching nozzle info:', err)
+      setLastActivity(activityMap)
+    } catch (error) {
+      console.error('Error fetching last activity:', error)
     }
   }
 
@@ -332,35 +277,29 @@ export default function Pumps() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-fixed">
               <thead className="bg-gradient-to-r from-gray-100 to-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-24 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Pump Code
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-36 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Phone
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-28 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Owner
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-32 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Registration
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Subscription
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="w-36 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Meter Readings
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Activity
                   </th>
                 </tr>
               </thead>
@@ -371,16 +310,16 @@ export default function Pumps() {
                     onClick={(e) => handleRowClick(pump.id, e)}
                     className="hover:bg-blue-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <span className="font-medium text-gray-900">{pump.pump_code || 'N/A'}</span>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{pump.name}</div>
+                    <td className="px-4 py-4 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">{pump.name}</div>
                       {pump.address && (
-                        <div className="text-sm text-gray-500">{pump.address}</div>
+                        <div className="text-sm text-gray-500 truncate">{pump.address}</div>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center gap-2">
                         <span>{pump.phone || 'N/A'}</span>
                         {phoneToTel(pump.phone) && (
@@ -396,21 +335,12 @@ export default function Pumps() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {pump.owner_name || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          pump.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {pump.is_active ? '✓ Active' : '✗ Inactive'}
+                    <td className="px-4 py-4 text-sm text-gray-900 max-w-0">
+                      <span className="block truncate" title={pump.owner_name || 'N/A'}>
+                        {pump.owner_name || 'N/A'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <span
                         className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                           pump.registration_status === 'approved'
@@ -425,48 +355,38 @@ export default function Pumps() {
                          pump.registration_status === 'rejected' ? '✗ Rejected' : 'N/A'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div className="font-medium">{pump.subscription_plan ? toTitleCase(pump.subscription_plan) : 'N/A'}</div>
-                      <div className="text-xs text-gray-500 font-medium">{pump.subscription_status ? toTitleCase(pump.subscription_status) : 'N/A'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       {meterReadings[pump.id] ? (
                         <div className="flex items-center gap-2">
                           <Gauge className="w-4 h-4 text-indigo-500" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {meterReadings[pump.id].count} readings
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              Latest reading: {meterReadings[pump.id].latestValue !== null && meterReadings[pump.id].latestValue !== undefined
-                                ? parseFloat(meterReadings[pump.id].latestValue).toFixed(2)
-                                : 'N/A'}
-                              {(() => {
-                                const key = `${pump.id}:${meterReadings[pump.id].latestNozzle}`
-                                const nozzle = nozzles[key]
-                                const label = nozzle?.nozzle_name || nozzle?.name
-                                return meterReadings[pump.id].latestNozzle
-                                  ? ` • ${label || `Nozzle ${meterReadings[pump.id].latestNozzle}`}`
-                                  : ''
-                              })()}
-                              {meterReadings[pump.id].latestSales !== null && meterReadings[pump.id].latestSales !== undefined
-                                ? ` • Sales ${parseFloat(meterReadings[pump.id].latestSales).toFixed(2)}`
-                                : ''}
-                              {meterReadings[pump.id].latestRsp !== null && meterReadings[pump.id].latestRsp !== undefined
-                                ? ` • RSP ${parseFloat(meterReadings[pump.id].latestRsp).toFixed(3)}`
-                                : ''}
-                              {meterReadings[pump.id].latestRo !== null && meterReadings[pump.id].latestRo !== undefined
-                                ? ` • RO ${parseFloat(meterReadings[pump.id].latestRo).toFixed(3)}`
-                                : ''}
-                            </div>
-                          </div>
+                          <span className="text-sm font-medium text-gray-900">
+                            {meterReadings[pump.id].count} readings
+                          </span>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-400">No readings</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatISTDate(pump.created_at)}
+                    <td className="px-4 py-4 min-w-0">
+                      {lastActivity[pump.id] ? (
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {lastActivity[pump.id].action_label || lastActivity[pump.id].action}
+                            {' · '}
+                            {lastActivity[pump.id].entity_label || lastActivity[pump.id].entity_type}
+                          </div>
+                          <div
+                            className="text-xs text-gray-500 mt-0.5 truncate"
+                            title={formatISTDateTime(lastActivity[pump.id].created_at, { withSeconds: true })}
+                          >
+                            {formatISTRelativeTime(lastActivity[pump.id].created_at)}
+                            {' · '}
+                            {lastActivity[pump.id].actor_name || 'System'}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">No activity</span>
+                      )}
                     </td>
                   </tr>
                 ))}
