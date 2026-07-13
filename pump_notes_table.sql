@@ -9,6 +9,8 @@ create table public.pump_notes (
   body text not null,
   note_type text not null default 'follow_up',
   follow_up_at timestamp with time zone null,
+  -- Display name of the admin who wrote the note (auth user; not FK to public.users)
+  author_name text null,
   created_by uuid null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
@@ -20,6 +22,9 @@ create table public.pump_notes (
     note_type in ('general', 'follow_up', 'call', 'whatsapp', 'meeting', 'issue', 'other')
   )
 ) tablespace pg_default;
+
+-- If pump_notes already exists without author_name:
+-- alter table public.pump_notes add column if not exists author_name text null;
 
 create index if not exists idx_pump_notes_pump_id
   on public.pump_notes using btree (pump_id) tablespace pg_default;

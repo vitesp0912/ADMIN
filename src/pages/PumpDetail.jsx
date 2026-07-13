@@ -35,6 +35,20 @@ const formatInr = (value) => {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+const authorDisplayName = (user) => {
+  if (!user) return null
+  const meta = user.user_metadata || {}
+  const name =
+    meta.full_name ||
+    meta.name ||
+    meta.display_name ||
+    [meta.first_name, meta.last_name].filter(Boolean).join(' ') ||
+    null
+  if (name && String(name).trim()) return String(name).trim()
+  if (user.email) return user.email.split('@')[0]
+  return null
+}
+
 export default function PumpDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -157,6 +171,7 @@ export default function PumpDetail() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deletingPump, setDeletingPump] = useState(false)
+  const [isSupportAdmin, setIsSupportAdmin] = useState(false)
 
   const [tanks, setTanks] = useState([])
   const [fuelReceipts, setFuelReceipts] = useState([])
@@ -186,6 +201,19 @@ export default function PumpDetail() {
     fetchPumpDetails()
     fetchPumpUsers()
   }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (cancelled) return
+      const email = (user?.email || '').trim().toLowerCase()
+      setIsSupportAdmin(email === 'support@petrofi.com')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
@@ -626,6 +654,8 @@ export default function PumpDetail() {
     setNoteFormError('')
     try {
       const followUpIso = new Date().toISOString()
+      const { data: { user } } = await supabase.auth.getUser()
+      const authorName = authorDisplayName(user)
 
       if (noteForm.id) {
         const { error } = await supabase
@@ -634,6 +664,7 @@ export default function PumpDetail() {
             body,
             note_type: 'follow_up',
             follow_up_at: followUpIso,
+            ...(authorName ? { author_name: authorName } : {}),
           })
           .eq('id', noteForm.id)
         if (error) throw error
@@ -643,6 +674,7 @@ export default function PumpDetail() {
           body,
           note_type: 'follow_up',
           follow_up_at: followUpIso,
+          ...(authorName ? { author_name: authorName } : {}),
         })
         if (error) throw error
       }
@@ -671,7 +703,7 @@ export default function PumpDetail() {
     }
   }
 
-  const handleSaveChanges = async () => {
+  const handleSaveChanges = async (overrideFormData = null) => {
     setSaving(true)
     setMessage({ type: '', text: '' })
     
@@ -684,29 +716,31 @@ export default function PumpDetail() {
       }
       
       console.log('Current user:', user.email || user.id)
+
+      const dataToSave = overrideFormData || formData
       
       const updateData = {
-        is_active: formData.is_active,
-        registration_status: formData.registration_status,
-        payment_verified: formData.payment_verified,
-        subscription_status: formData.subscription_status,
-        subscription_plan: formData.subscription_plan,
-        billing_cycle: formData.billing_cycle,
+        is_active: dataToSave.is_active,
+        registration_status: dataToSave.registration_status,
+        payment_verified: dataToSave.payment_verified,
+        subscription_status: dataToSave.subscription_status,
+        subscription_plan: dataToSave.subscription_plan,
+        billing_cycle: dataToSave.billing_cycle,
         updated_at: new Date().toISOString(),
       }
 
       // Set payment verification details if being verified
-      if (formData.payment_verified && !pump.payment_verified) {
+      if (dataToSave.payment_verified && !pump.payment_verified) {
         updateData.payment_verified_at = new Date().toISOString()
         updateData.payment_verified_by = user?.id || null
       }
 
       // Set subscription dates
-      if (formData.subscription_start_date) {
-        updateData.subscription_start_date = new Date(formData.subscription_start_date).toISOString()
+      if (dataToSave.subscription_start_date) {
+        updateData.subscription_start_date = new Date(dataToSave.subscription_start_date).toISOString()
       }
-      if (formData.subscription_end_date) {
-        updateData.subscription_end_date = new Date(formData.subscription_end_date).toISOString()
+      if (dataToSave.subscription_end_date) {
+        updateData.subscription_end_date = new Date(dataToSave.subscription_end_date).toISOString()
       }
 
       console.log('Updating pump with data:', updateData)
@@ -730,10 +764,15 @@ export default function PumpDetail() {
 
       console.log('Update successful:', data)
 
+      // Keep local form in sync with what was saved
+      if (overrideFormData) {
+        setFormData(overrideFormData)
+      }
+
       // Activate users when pump is approved or activated
       const shouldActivateUsers = 
-        (formData.registration_status === 'approved' && pump.registration_status !== 'approved') ||
-        (formData.is_active === true && pump.is_active === false)
+        (dataToSave.registration_status === 'approved' && pump.registration_status !== 'approved') ||
+        (dataToSave.is_active === true && pump.is_active === false)
 
       if (shouldActivateUsers) {
         console.log('Activating users for pump:', id)
@@ -774,24 +813,27 @@ export default function PumpDetail() {
   }
 
   const handleQuickApprove = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    setFormData({
+    const approvedFormData = {
       ...formData,
       is_active: true,
       registration_status: 'approved',
       payment_verified: true,
       subscription_status: 'active',
-      subscription_start_date: new Date().toISOString().split('T')[0],
-    })
-    
-    // Auto-save (this will also activate users via handleSaveChanges)
-    setTimeout(() => {
-      handleSaveChanges()
-    }, 100)
+      subscription_start_date: formData.subscription_start_date || new Date().toISOString().split('T')[0],
+    }
+
+    setFormData(approvedFormData)
+    await handleSaveChanges(approvedFormData)
   }
 
   const openPasswordModal = () => {
+    if (!isSupportAdmin) {
+      setMessage({
+        type: 'error',
+        text: 'Only support@petrofi.com can set or view user passwords.',
+      })
+      return
+    }
     const defaultUser = users[0]?.id || ''
     setSelectedUserId(defaultUser)
     setModalPassword('')
@@ -811,6 +853,10 @@ export default function PumpDetail() {
   }
 
   const handleSetUserPassword = async () => {
+    if (!isSupportAdmin) {
+      setPasswordError('Only support@petrofi.com can set or view user passwords.')
+      return
+    }
     if (!selectedUserId) {
       setPasswordError('Please select a user.')
       return
@@ -823,6 +869,11 @@ export default function PumpDetail() {
     setPasswordError('')
     setPasswordSuccess('')
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const email = (user?.email || '').trim().toLowerCase()
+      if (email !== 'support@petrofi.com') {
+        throw new Error('Only support@petrofi.com can set or view user passwords.')
+      }
       const { error } = await supabase.rpc('set_user_password', {
         p_user_id: selectedUserId,
         p_new_password: modalPassword,
@@ -838,6 +889,13 @@ export default function PumpDetail() {
   }
 
   const openDeleteModal = () => {
+    if (!isSupportAdmin) {
+      setMessage({
+        type: 'error',
+        text: 'Only support@petrofi.com can delete petrol pumps.',
+      })
+      return
+    }
     setDeleteConfirmText('')
     setDeleteModalOpen(true)
   }
@@ -851,6 +909,14 @@ export default function PumpDetail() {
   const deleteKeyword = `DELETE ${pump?.pump_code || pump?.name || ''}`.trim()
 
   const handleDeletePumpFromDetail = async () => {
+    if (!isSupportAdmin) {
+      setMessage({
+        type: 'error',
+        text: 'Only support@petrofi.com can delete petrol pumps.',
+      })
+      closeDeleteModal()
+      return
+    }
     if (deleteConfirmText !== deleteKeyword) {
       setMessage({
         type: 'error',
@@ -860,6 +926,11 @@ export default function PumpDetail() {
     }
     setDeletingPump(true)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const email = (user?.email || '').trim().toLowerCase()
+      if (email !== 'support@petrofi.com') {
+        throw new Error('Only support@petrofi.com can delete petrol pumps.')
+      }
       const { error } = await supabase.from('pumps').delete().eq('id', id)
       if (error) throw error
       navigate('/pumps')
@@ -1866,13 +1937,19 @@ export default function PumpDetail() {
                               {note.body}
                             </p>
                             <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                              <div className="min-w-0 flex-1">
-                                <span className="inline-flex items-start sm:items-center gap-1.5 text-xs sm:text-sm text-violet-800 font-medium">
+                              <div className="min-w-0 flex-1 flex flex-col gap-3">
+                                {note.author_name && (
+                                  <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-700 font-semibold">
+                                    <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-violet-600" />
+                                    <span className="truncate">{note.author_name}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-start sm:items-center gap-1.5 text-xs sm:text-sm text-violet-800 font-medium">
                                   <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 mt-0.5 sm:mt-0" />
                                   <span className="break-words">{followUpTime}</span>
-                                </span>
+                                </div>
                                 {note.updated_at && note.updated_at !== note.created_at && (
-                                  <p className="text-xs text-gray-400 mt-1 pl-5 sm:pl-0">
+                                  <p className="text-xs text-gray-400 pl-5 sm:pl-0">
                                     Edited {formatISTRelativeTime(note.updated_at)}
                                   </p>
                                 )}
@@ -2247,11 +2324,13 @@ export default function PumpDetail() {
                 <div className="flex items-center justify-between mb-6">
                   {pump.registration_status === 'pending' && (
                     <button
+                      type="button"
                       onClick={handleQuickApprove}
-                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold"
+                      disabled={saving}
+                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:from-green-700 hover:to-green-800 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <CheckCircle className="w-5 h-5" />
-                      Quick Approve
+                      {saving ? 'Approving...' : 'Quick Approve'}
                     </button>
                   )}
                 </div>
@@ -2404,16 +2483,32 @@ export default function PumpDetail() {
                     Set/reset password for users linked to this pump.
                   </p>
                   <button
+                    type="button"
                     onClick={openPasswordModal}
-                    disabled={users.length === 0}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                    disabled={!isSupportAdmin || users.length === 0}
+                    title={
+                      !isSupportAdmin
+                        ? 'Only support@petrofi.com can set or view user passwords'
+                        : users.length === 0
+                        ? 'No users found for this pump'
+                        : 'Set or view password for pump users'
+                    }
+                    className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 ${
+                      isSupportAdmin && users.length > 0
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        : 'bg-indigo-200 text-indigo-400 cursor-not-allowed'
+                    }`}
                   >
                     <Eye className="w-4 h-4" />
                     Set / View Password
                   </button>
-                  {users.length === 0 && (
+                  {!isSupportAdmin ? (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Password actions are restricted to support@petrofi.com.
+                    </p>
+                  ) : users.length === 0 ? (
                     <p className="text-xs text-gray-500 mt-2">No users found for this pump.</p>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="p-4 border border-red-200 rounded-lg bg-red-50">
@@ -2425,12 +2520,28 @@ export default function PumpDetail() {
                     Deleting this pump is permanent and can remove related records.
                   </p>
                   <button
+                    type="button"
                     onClick={openDeleteModal}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 inline-flex items-center gap-2"
+                    disabled={!isSupportAdmin}
+                    title={
+                      isSupportAdmin
+                        ? 'Permanently delete this pump'
+                        : 'Only support@petrofi.com can delete petrol pumps'
+                    }
+                    className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 ${
+                      isSupportAdmin
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'bg-red-200 text-red-400 cursor-not-allowed'
+                    }`}
                   >
                     <Trash2 className="w-4 h-4" />
                     Delete Pump
                   </button>
+                  {!isSupportAdmin && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Delete is restricted to support@petrofi.com.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
