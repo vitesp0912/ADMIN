@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { isSupportAdminEmail, SUPPORT_ONLY_PATHS } from '../lib/authAccess'
 import { 
   LayoutDashboard, 
   Building2, 
@@ -15,28 +16,63 @@ import {
   LogOut
 } from 'lucide-react'
 
+const ALL_NAV_ITEMS = [
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/pumps', icon: Building2, label: 'Pumps' },
+  { path: '/users', icon: Users, label: 'Users', supportOnly: true },
+  { path: '/sales', icon: ShoppingCart, label: 'Sales', supportOnly: true },
+  { path: '/leads', icon: UserRoundPlus, label: 'Leads' },
+  { path: '/expenses', icon: Receipt, label: 'Expenses', supportOnly: true },
+  { path: '/meter-readings', icon: Gauge, label: 'Meter Readings', supportOnly: true },
+  { path: '/settings', icon: Settings, label: 'Settings', supportOnly: true },
+  { path: '/audit-logs', icon: FileText, label: 'Activity Log', supportOnly: true },
+  { path: '/error-logs', icon: AlertTriangle, label: 'Error Logs', supportOnly: true },
+]
+
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isSupportAdmin, setIsSupportAdmin] = useState(false)
+  const [accessReady, setAccessReady] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (cancelled) return
+      setIsSupportAdmin(isSupportAdminEmail(user?.email))
+      setAccessReady(true)
+    })()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsSupportAdmin(isSupportAdminEmail(session?.user?.email))
+      setAccessReady(true)
+    })
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  const navItems = useMemo(
+    () => ALL_NAV_ITEMS.filter((item) => isSupportAdmin || !item.supportOnly),
+    [isSupportAdmin]
+  )
+
+  // Redirect if a non-support user hits a restricted URL directly
+  useEffect(() => {
+    if (!accessReady || isSupportAdmin) return
+    if (SUPPORT_ONLY_PATHS.includes(location.pathname)) {
+      navigate('/', { replace: true })
+    }
+  }, [accessReady, isSupportAdmin, location.pathname, navigate])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     navigate('/login')
   }
-
-  const navItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/pumps', icon: Building2, label: 'Pumps' },
-    { path: '/users', icon: Users, label: 'Users' },
-    { path: '/sales', icon: ShoppingCart, label: 'Sales' },
-    { path: '/leads', icon: UserRoundPlus, label: 'Leads' },
-    { path: '/expenses', icon: Receipt, label: 'Expenses' },
-    { path: '/meter-readings', icon: Gauge, label: 'Meter Readings' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
-    { path: '/audit-logs', icon: FileText, label: 'Activity Log' },
-    { path: '/error-logs', icon: AlertTriangle, label: 'Error Logs' },
-  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -106,10 +142,9 @@ export default function Layout() {
       {/* Main Content */}
       <div className="lg:ml-64">
         <div className="p-4 lg:p-8">
-          <Outlet />
+          <Outlet context={{ isSupportAdmin, accessReady }} />
         </div>
       </div>
     </div>
   )
 }
-

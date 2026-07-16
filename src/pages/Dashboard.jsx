@@ -1,9 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { Building2, Users, ShoppingCart, Receipt, TrendingUp, AlertCircle, Bell, ChevronDown, ChevronUp, Mail, Phone, User } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+import { isSupportAdminEmail } from '../lib/authAccess'
 
 export default function Dashboard() {
+  const outletContext = useOutletContext() || {}
+  const [localSupportAdmin, setLocalSupportAdmin] = useState(false)
+  const isSupportAdmin = outletContext.isSupportAdmin ?? localSupportAdmin
+
+  useEffect(() => {
+    if (outletContext.accessReady) return
+    let cancelled = false
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!cancelled) setLocalSupportAdmin(isSupportAdminEmail(user?.email))
+    })()
+    return () => { cancelled = true }
+  }, [outletContext.accessReady])
   const [stats, setStats] = useState({
     totalPumps: 0,
     activePumps: 0,
@@ -88,7 +102,6 @@ export default function Dashboard() {
 
       const totalExpenses = expenses?.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0) || 0
 
-      // Fetch recent pumps
       const { data: recent, error: recentError } = await supabase
         .from('pumps')
         .select('id, name, pump_code, registration_status, is_active, created_at')
@@ -131,6 +144,60 @@ export default function Dashboard() {
     }
   }
 
+  const statCards = useMemo(() => {
+    const cards = [
+      {
+        title: 'Total Pumps',
+        value: stats.totalPumps,
+        icon: Building2,
+        color: 'blue',
+        link: '/pumps',
+      },
+      {
+        title: 'Active Pumps',
+        value: stats.activePumps,
+        icon: Building2,
+        color: 'green',
+        link: '/pumps',
+      },
+      {
+        title: 'Pending Registrations',
+        value: stats.pendingPumps,
+        icon: AlertCircle,
+        color: 'yellow',
+        link: '/pumps',
+      },
+    ]
+
+    if (isSupportAdmin) {
+      cards.push(
+        {
+          title: 'Total Users',
+          value: stats.totalUsers,
+          icon: Users,
+          color: 'purple',
+          link: '/users',
+        },
+        {
+          title: 'Sales (30 days)',
+          value: `₹${stats.totalSales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
+          icon: ShoppingCart,
+          color: 'green',
+          link: '/sales',
+        },
+        {
+          title: 'Expenses (30 days)',
+          value: `₹${stats.totalExpenses.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
+          icon: Receipt,
+          color: 'red',
+          link: '/expenses',
+        },
+      )
+    }
+
+    return cards
+  }, [stats, isSupportAdmin])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -141,51 +208,6 @@ export default function Dashboard() {
       </div>
     )
   }
-
-  const statCards = [
-    {
-      title: 'Total Pumps',
-      value: stats.totalPumps,
-      icon: Building2,
-      color: 'blue',
-      link: '/pumps',
-    },
-    {
-      title: 'Active Pumps',
-      value: stats.activePumps,
-      icon: Building2,
-      color: 'green',
-      link: '/pumps',
-    },
-    {
-      title: 'Pending Registrations',
-      value: stats.pendingPumps,
-      icon: AlertCircle,
-      color: 'yellow',
-      link: '/pumps',
-    },
-    {
-      title: 'Total Users',
-      value: stats.totalUsers,
-      icon: Users,
-      color: 'purple',
-      link: '/users',
-    },
-    {
-      title: 'Sales (30 days)',
-      value: `₹${stats.totalSales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
-      icon: ShoppingCart,
-      color: 'green',
-      link: '/sales',
-    },
-    {
-      title: 'Expenses (30 days)',
-      value: `₹${stats.totalExpenses.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
-      icon: Receipt,
-      color: 'red',
-      link: '/expenses',
-    },
-  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -338,8 +360,8 @@ export default function Dashboard() {
                             : 'bg-red-100 text-red-800'
                         }`}
                       >
-                        {pump.registration_status === 'approved' ? '✓ Approved' : 
-                         pump.registration_status === 'pending' ? '⏳ Pending' : 
+                        {pump.registration_status === 'approved' ? '✓ Approved' :
+                         pump.registration_status === 'pending' ? '⏳ Pending' :
                          pump.registration_status === 'rejected' ? '✗ Rejected' : 'N/A'}
                       </span>
                     </td>

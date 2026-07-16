@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight } from 'lucide-react'
 import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
+import { isSupportAdminEmail, SUPPORT_ADMIN_EMAIL } from '../lib/authAccess'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -207,13 +208,18 @@ export default function PumpDetail() {
     ;(async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (cancelled) return
-      const email = (user?.email || '').trim().toLowerCase()
-      setIsSupportAdmin(email === 'support@petrofi.com')
+      setIsSupportAdmin(isSupportAdminEmail(user?.email))
     })()
     return () => {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!isSupportAdmin && (activeTab === 'subscription' || activeTab === 'actions')) {
+      setActiveTab('details')
+    }
+  }, [isSupportAdmin, activeTab])
 
   useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
@@ -826,11 +832,23 @@ export default function PumpDetail() {
     await handleSaveChanges(approvedFormData)
   }
 
+  const handleQuickReject = async () => {
+    const rejectedFormData = {
+      ...formData,
+      is_active: false,
+      registration_status: 'rejected',
+      subscription_status: 'pending',
+    }
+
+    setFormData(rejectedFormData)
+    await handleSaveChanges(rejectedFormData)
+  }
+
   const openPasswordModal = () => {
     if (!isSupportAdmin) {
       setMessage({
         type: 'error',
-        text: 'Only support@petrofi.com can set or view user passwords.',
+        text: `Only ${SUPPORT_ADMIN_EMAIL} can set or view user passwords.`,
       })
       return
     }
@@ -854,7 +872,7 @@ export default function PumpDetail() {
 
   const handleSetUserPassword = async () => {
     if (!isSupportAdmin) {
-      setPasswordError('Only support@petrofi.com can set or view user passwords.')
+      setPasswordError(`Only ${SUPPORT_ADMIN_EMAIL} can set or view user passwords.`)
       return
     }
     if (!selectedUserId) {
@@ -870,9 +888,8 @@ export default function PumpDetail() {
     setPasswordSuccess('')
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const email = (user?.email || '').trim().toLowerCase()
-      if (email !== 'support@petrofi.com') {
-        throw new Error('Only support@petrofi.com can set or view user passwords.')
+      if (!isSupportAdminEmail(user?.email)) {
+        throw new Error(`Only ${SUPPORT_ADMIN_EMAIL} can set or view user passwords.`)
       }
       const { error } = await supabase.rpc('set_user_password', {
         p_user_id: selectedUserId,
@@ -892,7 +909,7 @@ export default function PumpDetail() {
     if (!isSupportAdmin) {
       setMessage({
         type: 'error',
-        text: 'Only support@petrofi.com can delete petrol pumps.',
+        text: `Only ${SUPPORT_ADMIN_EMAIL} can delete petrol pumps.`,
       })
       return
     }
@@ -912,7 +929,7 @@ export default function PumpDetail() {
     if (!isSupportAdmin) {
       setMessage({
         type: 'error',
-        text: 'Only support@petrofi.com can delete petrol pumps.',
+        text: `Only ${SUPPORT_ADMIN_EMAIL} can delete petrol pumps.`,
       })
       closeDeleteModal()
       return
@@ -927,9 +944,8 @@ export default function PumpDetail() {
     setDeletingPump(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const email = (user?.email || '').trim().toLowerCase()
-      if (email !== 'support@petrofi.com') {
-        throw new Error('Only support@petrofi.com can delete petrol pumps.')
+      if (!isSupportAdminEmail(user?.email)) {
+        throw new Error(`Only ${SUPPORT_ADMIN_EMAIL} can delete petrol pumps.`)
       }
       const { error } = await supabase.from('pumps').delete().eq('id', id)
       if (error) throw error
@@ -2097,9 +2113,9 @@ export default function PumpDetail() {
               <nav className="flex px-3 sm:px-6 min-w-max">
                 {[
                   { id: 'details', label: 'Details' },
-                  { id: 'subscription', label: 'Subscription' },
+                  ...(isSupportAdmin ? [{ id: 'subscription', label: 'Subscription' }] : []),
                   { id: 'management', label: 'Management' },
-                  { id: 'actions', label: 'Actions' },
+                  ...(isSupportAdmin ? [{ id: 'actions', label: 'Actions' }] : []),
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -2273,7 +2289,7 @@ export default function PumpDetail() {
         )}
 
               {/* Subscription Tab */}
-              {activeTab === 'subscription' && (
+              {isSupportAdmin && activeTab === 'subscription' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-lg">
@@ -2322,7 +2338,7 @@ export default function PumpDetail() {
               {activeTab === 'management' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
-                  {pump.registration_status === 'pending' && (
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
                       onClick={handleQuickApprove}
@@ -2332,7 +2348,16 @@ export default function PumpDetail() {
                       <CheckCircle className="w-5 h-5" />
                       {saving ? 'Approving...' : 'Quick Approve'}
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={handleQuickReject}
+                      disabled={saving}
+                      className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <XCircle className="w-5 h-5" />
+                      {saving ? 'Rejecting...' : 'Quick Reject'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-5">
@@ -2475,7 +2500,7 @@ export default function PumpDetail() {
             )}
 
               {/* Actions Tab */}
-              {activeTab === 'actions' && (
+              {isSupportAdmin && activeTab === 'actions' && (
               <div className="space-y-4">
                 <div className="p-4 border border-gray-200 rounded-lg bg-white">
                   <h3 className="font-semibold text-gray-900 mb-2">User Password Actions</h3>
@@ -2488,7 +2513,7 @@ export default function PumpDetail() {
                     disabled={!isSupportAdmin || users.length === 0}
                     title={
                       !isSupportAdmin
-                        ? 'Only support@petrofi.com can set or view user passwords'
+                        ? `Only ${SUPPORT_ADMIN_EMAIL} can set or view user passwords`
                         : users.length === 0
                         ? 'No users found for this pump'
                         : 'Set or view password for pump users'
@@ -2504,7 +2529,7 @@ export default function PumpDetail() {
                   </button>
                   {!isSupportAdmin ? (
                     <p className="text-xs text-gray-500 mt-2">
-                      Password actions are restricted to support@petrofi.com.
+                      Password actions are restricted to {SUPPORT_ADMIN_EMAIL}.
                     </p>
                   ) : users.length === 0 ? (
                     <p className="text-xs text-gray-500 mt-2">No users found for this pump.</p>
@@ -2526,7 +2551,7 @@ export default function PumpDetail() {
                     title={
                       isSupportAdmin
                         ? 'Permanently delete this pump'
-                        : 'Only support@petrofi.com can delete petrol pumps'
+                        : `Only ${SUPPORT_ADMIN_EMAIL} can delete petrol pumps`
                     }
                     className={`px-4 py-2 rounded-lg inline-flex items-center gap-2 ${
                       isSupportAdmin
@@ -2539,7 +2564,7 @@ export default function PumpDetail() {
                   </button>
                   {!isSupportAdmin && (
                     <p className="text-xs text-red-600 mt-2">
-                      Delete is restricted to support@petrofi.com.
+                      Delete is restricted to {SUPPORT_ADMIN_EMAIL}.
                     </p>
                   )}
                 </div>
