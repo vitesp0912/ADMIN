@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight, ShoppingBag } from 'lucide-react'
 import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 import { isSupportAdminEmail, SUPPORT_ADMIN_EMAIL } from '../lib/authAccess'
 
@@ -36,6 +36,20 @@ const formatInr = (value) => {
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+/** Format Postgres `time` values (HH:MM:SS or HH:MM) for display */
+const formatShiftTime = (timeValue) => {
+  if (!timeValue) return '—'
+  const raw = String(timeValue)
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+  if (!match) return raw
+  let hours = parseInt(match[1], 10)
+  const minutes = match[2]
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  hours = hours % 12
+  if (hours === 0) hours = 12
+  return `${hours}:${minutes} ${ampm}`
+}
+
 const authorDisplayName = (user) => {
   if (!user) return null
   const meta = user.user_metadata || {}
@@ -61,6 +75,8 @@ export default function PumpDetail() {
   const [fuelTypes, setFuelTypes] = useState({})
   const [expenses, setExpenses] = useState([])
   const [inventory, setInventory] = useState([])
+  const [inventoryPurchases, setInventoryPurchases] = useState([])
+  const [inventorySales, setInventorySales] = useState([])
   const [customers, setCustomers] = useState([])
   const [udharLedger, setUdharLedger] = useState([])
   const [ledgerCustomers, setLedgerCustomers] = useState({})
@@ -68,6 +84,7 @@ export default function PumpDetail() {
   const [loading, setLoading] = useState(true)
   const [treasuryBuckets, setTreasuryBuckets] = useState([])
   const [treasuryLedger, setTreasuryLedger] = useState([])
+  const [shifts, setShifts] = useState([])
 
   const udharLedgerByCustomer = useMemo(() => {
     const byCustomer = new Map()
@@ -103,6 +120,40 @@ export default function PumpDetail() {
     })
     return map
   }, [treasuryBuckets])
+
+  const shiftById = useMemo(() => {
+    const map = {}
+    shifts.forEach((s) => {
+      map[s.id] = s
+    })
+    return map
+  }, [shifts])
+
+  const shiftLabel = (shiftId) => {
+    if (!shiftId) return '—'
+    const s = shiftById[shiftId]
+    if (!s) return '—'
+    return s.name || `Shift ${s.sequence}` || '—'
+  }
+
+  const inventoryById = useMemo(() => {
+    const map = {}
+    inventory.forEach((item) => {
+      map[item.id] = item
+    })
+    return map
+  }, [inventory])
+
+  const inventoryProductLabel = (productId) => {
+    if (!productId) return '—'
+    return inventoryById[productId]?.name || '—'
+  }
+
+  const bucketLabel = (bucketId) => {
+    if (!bucketId) return '—'
+    const b = treasuryBucketById[bucketId]
+    return b?.name || '—'
+  }
 
   const treasuryBucketsTotal = useMemo(
     () => treasuryBuckets.reduce((sum, b) => sum + parseFloat(b.current_balance || 0), 0),
@@ -300,6 +351,7 @@ export default function PumpDetail() {
           if (saleFuelTypeIds.length > 0) {
             await fetchFuelTypes(saleFuelTypeIds)
           }
+          await fetchShiftsForPump(id)
           break
 
         case 'meter-readings':
@@ -326,6 +378,7 @@ export default function PumpDetail() {
           if (fuelTypeIds.length > 0) {
             await fetchFuelTypes(fuelTypeIds)
           }
+          await fetchShiftsForPump(id)
           break
 
         case 'expenses':
@@ -341,6 +394,7 @@ export default function PumpDetail() {
           }
           console.log(`Fetched ${expensesData?.length || 0} expenses records:`, expensesData)
           setExpenses(expensesData || [])
+          await fetchShiftsForPump(id)
           break
 
         case 'inventory':
@@ -356,6 +410,75 @@ export default function PumpDetail() {
           }
           setInventory(inventoryData || [])
           break
+
+        case 'inventory-purchases': {
+          const [{ data: purchaseData, error: purchaseErr }, { data: invData, error: invErr }, bucketsRes] =
+            await Promise.all([
+              supabase
+                .from('inventory_purchases')
+                .select('*')
+                .eq('pump_id', id)
+                .order('purchase_date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(500),
+              supabase
+                .from('inventory')
+                .select('id, name')
+                .eq('pump_id', id),
+              supabase
+                .from('treasury_buckets')
+                .select('*')
+                .eq('pump_id', id)
+                .order('display_order', { ascending: true }),
+            ])
+          if (purchaseErr) {
+            console.error('Inventory purchases fetch error:', purchaseErr)
+            throw purchaseErr
+          }
+          if (invErr) console.error('Inventory products lookup:', invErr)
+          if (bucketsRes.error) console.error('Buckets lookup:', bucketsRes.error)
+          setInventoryPurchases(purchaseData || [])
+          if (invData) {
+            setInventory((prev) => {
+              const map = { ...Object.fromEntries(prev.map((p) => [p.id, p])) }
+              invData.forEach((p) => {
+                map[p.id] = { ...(map[p.id] || {}), ...p }
+              })
+              return Object.values(map)
+            })
+          }
+          if (bucketsRes.data) setTreasuryBuckets(bucketsRes.data)
+          break
+        }
+
+        case 'inventory-sales': {
+          const [{ data: salesInvData, error: salesInvErr }, customersRes] = await Promise.all([
+            supabase
+              .from('inventory_sales')
+              .select('*')
+              .eq('pump_id', id)
+              .order('sold_at', { ascending: false })
+              .limit(500),
+            supabase
+              .from('customers')
+              .select('id, name, phone')
+              .eq('pump_id', id),
+          ])
+          if (salesInvErr) {
+            console.error('Inventory sales fetch error:', salesInvErr)
+            throw salesInvErr
+          }
+          setInventorySales(salesInvData || [])
+          if (!customersRes.error && customersRes.data) {
+            const m = {}
+            customersRes.data.forEach((c) => {
+              m[c.id] = c
+            })
+            setLedgerCustomers((prev) => ({ ...prev, ...m }))
+          }
+          await fetchShiftsForPump(id)
+          break
+        }
 
         case 'customers':
           const { data: customersData, error: customersError } = await supabase
@@ -428,6 +551,7 @@ export default function PumpDetail() {
             )
           }
           await Promise.all(lookups)
+          await fetchShiftsForPump(id)
           break
         }
 
@@ -446,6 +570,11 @@ export default function PumpDetail() {
           if (ftIds.length > 0) {
             await fetchFuelTypes(ftIds)
           }
+          break
+        }
+
+        case 'shifts': {
+          await fetchShiftsForPump(id)
           break
         }
 
@@ -620,6 +749,23 @@ export default function PumpDetail() {
       setFuelTypes(prev => ({ ...prev, ...map }))
     } catch (err) {
       console.error('Error fetching fuel types:', err)
+    }
+  }
+
+  const fetchShiftsForPump = async (pumpId) => {
+    try {
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('id, name, sequence, start_time, end_time, is_active')
+        .eq('pump_id', pumpId)
+        .order('sequence', { ascending: true })
+      if (error) {
+        console.error('Shifts fetch error:', error)
+        return
+      }
+      setShifts(data || [])
+    } catch (err) {
+      console.error('Error fetching shifts:', err)
     }
   }
 
@@ -1066,11 +1212,14 @@ export default function PumpDetail() {
                 {[
                   { id: 'users', label: 'Users' },
                   { id: 'inventory', label: 'Inventory' },
+                  { id: 'inventory-purchases', label: 'Inventory purchases' },
+                  { id: 'inventory-sales', label: 'Inventory sales' },
                   { id: 'customers', label: 'Customers' },
                   { id: 'udhar-ledger', label: 'Udhar ledger' },
                   { id: 'sales', label: 'Digital Sales' },
                   { id: 'meter-readings', label: 'Meter Readings' },
                   { id: 'expenses', label: 'Expenses' },
+                  { id: 'shifts', label: 'Shifts' },
                   { id: 'tanks', label: 'Tanks' },
                   { id: 'fuel-receipts', label: 'Fuel receipts' },
                   { id: 'bank-accounts', label: 'Bank accounts' },
@@ -1230,6 +1379,134 @@ export default function PumpDetail() {
               </div>
             )}
 
+            {/* Inventory purchases Tab */}
+            {activeDataTab === 'inventory-purchases' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <Package className="w-5 h-5 text-amber-600" />
+                  Inventory purchases ({inventoryPurchases.length})
+                </h3>
+                {dataLoading['inventory-purchases'] ? (
+                  <div className="text-center py-8">Loading inventory purchases...</div>
+                ) : inventoryPurchases.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No inventory purchases for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm min-w-[900px]">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Product</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Units</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Total cost</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Avg cost</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Paid from</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {inventoryPurchases.map((row) => (
+                          <tr key={row.id} className="hover:bg-gray-50 align-top">
+                            <td className="px-4 py-3 whitespace-nowrap">{formatISTDate(row.purchase_date)}</td>
+                            <td className="px-4 py-3 font-medium text-gray-900">
+                              {inventoryProductLabel(row.product_id)}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums">{row.units}</td>
+                            <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                              {formatInr(row.total_purchase_cost)}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums">{formatInr(row.avg_cost_price)}</td>
+                            <td className="px-4 py-3">{bucketLabel(row.bucket_id)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Inventory sales Tab */}
+            {activeDataTab === 'inventory-sales' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <ShoppingBag className="w-5 h-5 text-emerald-600" />
+                  Inventory sales ({inventorySales.length})
+                </h3>
+                {dataLoading['inventory-sales'] ? (
+                  <div className="text-center py-8">Loading inventory sales...</div>
+                ) : inventorySales.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <ShoppingBag className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No inventory sales for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm min-w-[960px]">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Product</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Qty</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Sell price</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Cost</th>
+                          <th className="px-4 py-3 text-right font-medium text-gray-700">Profit</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Customer</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Sold at</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {inventorySales.map((row) => {
+                          const cust = row.customer_id ? ledgerCustomers[row.customer_id] : null
+                          return (
+                            <tr key={row.id} className="hover:bg-gray-50 align-top">
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {row.sale_date ? formatISTDate(row.sale_date) : '—'}
+                              </td>
+                              <td className="px-4 py-3 font-medium whitespace-nowrap">
+                                {shiftLabel(row.shift_id)}
+                              </td>
+                              <td className="px-4 py-3 font-medium text-gray-900">
+                                {row.product_name || inventoryProductLabel(row.product_id)}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums">{row.quantity_sold}</td>
+                              <td className="px-4 py-3 text-right tabular-nums">
+                                {formatInr(row.unit_selling_price)}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums">
+                                {formatInr(row.unit_cost_snap)}
+                              </td>
+                              <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-700">
+                                {row.profit != null ? formatInr(row.profit) : '—'}
+                              </td>
+                              <td className="px-4 py-3">
+                                {cust ? (
+                                  <div>
+                                    <div className="font-medium text-gray-900">{cust.name || '—'}</div>
+                                    {cust.phone && (
+                                      <div className="text-xs text-gray-500 font-mono">{cust.phone}</div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                                {row.sold_at ? formatISTDateTime(row.sold_at) : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Customers Tab */}
             {activeDataTab === 'customers' && (
               <div>
@@ -1328,6 +1605,7 @@ export default function PumpDetail() {
                                 <th className="px-4 py-3 text-left font-medium text-gray-700">
                                   Business date
                                 </th>
+                                <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
                                 <th className="px-4 py-3 text-left font-medium text-gray-700">Type</th>
                                 <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
                                 <th className="px-4 py-3 text-left font-medium text-gray-700">
@@ -1346,6 +1624,9 @@ export default function PumpDetail() {
                                   <tr key={row.id} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 whitespace-nowrap">
                                       {row.business_date ? formatISTDate(row.business_date) : '—'}
+                                    </td>
+                                    <td className="px-4 py-3 font-medium whitespace-nowrap">
+                                      {shiftLabel(row.shift_id)}
                                     </td>
                                     <td className="px-4 py-3">
                                       <span
@@ -1407,6 +1688,7 @@ export default function PumpDetail() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Date & Time (IST)</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Payment</th>
                         </tr>
@@ -1415,6 +1697,7 @@ export default function PumpDetail() {
                         {sales.map((sale) => (
                           <tr key={sale.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3">{formatISTDateTime(sale.date_time)}</td>
+                            <td className="px-4 py-3 font-medium whitespace-nowrap">{shiftLabel(sale.shift_id)}</td>
                             <td className="px-4 py-3 font-bold">₹{parseFloat(sale.total_amount).toFixed(2)}</td>
                             <td className="px-4 py-3">
                               <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
@@ -1446,6 +1729,7 @@ export default function PumpDetail() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Nozzle</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Fuel Type</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Opening</th>
@@ -1460,6 +1744,7 @@ export default function PumpDetail() {
                         {meterReadings.map((reading) => (
                           <tr key={reading.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3">{formatISTDate(reading.date)}</td>
+                            <td className="px-4 py-3 font-medium whitespace-nowrap">{shiftLabel(reading.shift_id)}</td>
                             <td className="px-4 py-3 font-medium">{(() => {
                               const key = `${reading.pump_id}:${reading.nozzle_id}`
                               const nozzle = nozzles[key]
@@ -1506,6 +1791,7 @@ export default function PumpDetail() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Date</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Shift</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Category</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Description</th>
                           <th className="px-4 py-3 text-left font-medium text-gray-700">Amount</th>
@@ -1516,6 +1802,7 @@ export default function PumpDetail() {
                         {expenses.map((expense) => (
                           <tr key={expense.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3">{formatISTDateTime(expense.date_time)}</td>
+                            <td className="px-4 py-3 font-medium whitespace-nowrap">{shiftLabel(expense.shift_id)}</td>
                             <td className="px-4 py-3 font-medium">{expense.category ? toTitleCase(expense.category) : 'N/A'}</td>
                             <td className="px-4 py-3">{expense.description || '—'}</td>
                             <td className="px-4 py-3 font-bold text-red-600">₹{parseFloat(expense.amount).toFixed(2)}</td>
@@ -1523,6 +1810,55 @@ export default function PumpDetail() {
                               <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
                                 {expense.payment_mode ? toTitleCase(expense.payment_mode) : 'N/A'}
                               </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Shifts Tab */}
+            {activeDataTab === 'shifts' && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                  <Clock className="w-5 h-5 text-sky-600" />
+                  Shifts ({shifts.length})
+                </h3>
+                {dataLoading.shifts ? (
+                  <div className="text-center py-8">Loading shifts...</div>
+                ) : shifts.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                    <Clock className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-500 font-medium">No shifts configured for this pump</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">#</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Start</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">End</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-700">Active</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {shifts.map((shift) => (
+                          <tr key={shift.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 tabular-nums text-gray-600">{shift.sequence}</td>
+                            <td className="px-4 py-3 font-medium text-gray-900">{shift.name}</td>
+                            <td className="px-4 py-3 tabular-nums">{formatShiftTime(shift.start_time)}</td>
+                            <td className="px-4 py-3 tabular-nums">{formatShiftTime(shift.end_time)}</td>
+                            <td className="px-4 py-3">
+                              {shift.is_active ? (
+                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Yes</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">No</span>
+                              )}
                             </td>
                           </tr>
                         ))}
