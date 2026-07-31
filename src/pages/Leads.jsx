@@ -173,17 +173,17 @@ export default function Leads() {
   }
 
   const statCards = [
-    { label: 'Total Leads', value: leads.length, icon: Users, tone: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+    { label: 'Total Leads', value: leads.length, icon: Users, tone: 'text-info bg-info-soft border-transparent' },
     { label: 'Converted', value: leads.filter((l) => l.status === 'converted').length, icon: TrendingUp, tone: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
     { label: 'Hot Leads', value: leads.filter((l) => ['high', 'urgent'].includes(l.priority)).length, icon: Filter, tone: 'text-amber-700 bg-amber-50 border-amber-200' },
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <div className="pf-page">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-slate-900">Leads</h1>
-          <p className="text-slate-600 mt-1">Track and manage incoming business opportunities.</p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-ink">Leads</h1>
+          <p className="text-ink-secondary mt-1">Track and manage incoming business opportunities.</p>
         </div>
         <button onClick={openCreateModal} className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
           <Plus className="w-4 h-4" /> New Lead
@@ -208,31 +208,31 @@ export default function Leads() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="p-4 border-b border-slate-200 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="rounded-xl border border-line bg-surface shadow-sm">
+        <div className="p-4 border-b border-line grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search lead, phone, company..." className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-lg" />
+            <Search className="w-4 h-4 text-ink-muted absolute left-3 top-3" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search lead, phone, company..." className="w-full pl-9 pr-3 py-2.5 border border-line-strong rounded-lg" />
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full px-3 py-2.5 border border-line-strong rounded-lg">
             <option value="all">All Status</option>
             {STATUS_OPTIONS.map((v) => <option key={v} value={v}>{toTitleCase(v)}</option>)}
           </select>
-          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="w-full px-3 py-2.5 border border-slate-300 rounded-lg">
+          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="w-full px-3 py-2.5 border border-line-strong rounded-lg">
             <option value="all">All Priority</option>
             {PRIORITY_OPTIONS.map((v) => <option key={v} value={v}>{toTitleCase(v)}</option>)}
           </select>
         </div>
 
         {loading ? (
-          <div className="p-10 text-center text-slate-500">Loading leads...</div>
+          <div className="p-10 text-center text-ink-muted">Loading leads...</div>
         ) : filteredLeads.length === 0 ? (
-          <div className="p-10 text-center text-slate-500">No leads found.</div>
+          <div className="p-10 text-center text-ink-muted">No leads found.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr className="text-left text-xs font-semibold text-slate-600 uppercase">
+              <thead className="bg-surface-muted border-b border-line">
+                <tr className="text-left text-xs font-semibold text-ink-secondary uppercase">
                   <th className="px-4 py-3">Lead</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Priority</th>
@@ -243,10 +243,10 @@ export default function Leads() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openEditModal(lead)}>
+                  <tr key={lead.id} className="hover:bg-surface-muted cursor-pointer" onClick={() => openEditModal(lead)}>
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">{lead.full_name}</div>
-                      <div className="text-sm text-slate-600 flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.phone}</div>
+                      <div className="font-semibold text-ink">{lead.full_name}</div>
+                      <div className="text-sm text-ink-secondary flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{lead.phone}</div>
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <select
@@ -254,7 +254,7 @@ export default function Leads() {
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => handleInlineFieldUpdate(lead.id, 'status', e.target.value)}
                         disabled={inlineSavingId === lead.id}
-                        className="w-full min-w-[140px] px-2 py-1.5 border border-slate-300 rounded-md bg-white"
+                        className="w-full min-w-[140px] px-2 py-1.5 border border-line-strong rounded-md bg-surface"
                       >
                         {STATUS_OPTIONS.map((v) => (
                           <option key={v} value={v}>{toTitleCase(v)}</option>
@@ -267,7 +267,7 @@ export default function Leads() {
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => handleInlineFieldUpdate(lead.id, 'priority', e.target.value)}
                         disabled={inlineSavingId === lead.id}
-                        className="w-full min-w-[130px] px-2 py-1.5 border border-slate-300 rounded-md bg-white"
+                        className="w-full min-w-[130px] px-2 py-1.5 border border-line-strong rounded-md bg-surface"
                       >
                         {PRIORITY_OPTIONS.map((v) => (
                           <option key={v} value={v}>{toTitleCase(v)}</option>
@@ -280,19 +280,19 @@ export default function Leads() {
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => handleInlineFieldUpdate(lead.id, 'source', e.target.value)}
                         disabled={inlineSavingId === lead.id}
-                        className="w-full min-w-[140px] px-2 py-1.5 border border-slate-300 rounded-md bg-white"
+                        className="w-full min-w-[140px] px-2 py-1.5 border border-line-strong rounded-md bg-surface"
                       >
                         {SOURCE_OPTIONS.map((v) => (
                           <option key={v} value={v}>{toTitleCase(v)}</option>
                         ))}
                       </select>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 max-w-[280px]">
+                    <td className="px-4 py-3 text-sm text-ink-secondary max-w-[280px]">
                       <div className="truncate" title={lead.notes || ''}>
                         {lead.notes || '—'}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{lead.updated_at ? new Date(lead.updated_at).toLocaleString() : '—'}</td>
+                    <td className="px-4 py-3 text-sm text-ink-secondary">{lead.updated_at ? new Date(lead.updated_at).toLocaleString() : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -303,10 +303,10 @@ export default function Leads() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 p-3 sm:p-4 overflow-y-auto">
-          <div className="mx-auto my-6 max-w-3xl rounded-xl bg-white border border-slate-200 shadow-xl">
+          <div className="mx-auto my-6 max-w-3xl rounded-xl bg-surface border border-line shadow-xl">
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b">
-              <h2 className="text-lg font-semibold text-slate-900">{form.id ? 'Edit Lead' : 'Create Lead'}</h2>
-              <button onClick={closeModal} className="text-slate-500 hover:text-slate-700"><X className="w-5 h-5" /></button>
+              <h2 className="text-lg font-semibold text-ink">{form.id ? 'Edit Lead' : 'Create Lead'}</h2>
+              <button onClick={closeModal} className="text-ink-muted hover:text-ink-secondary"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Full name *" className="px-3 py-2.5 border rounded-lg" />
@@ -337,7 +337,7 @@ export default function Leads() {
                 <button onClick={() => setDeleteOpen(true)} className="px-3 py-2 rounded-lg border border-red-300 text-red-700 hover:bg-red-50">Delete Lead</button>
               ) : <span />}
               <div className="flex items-center gap-2">
-                <button onClick={closeModal} className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700">Cancel</button>
+                <button onClick={closeModal} className="px-3 py-2 rounded-lg border border-line-strong text-ink-secondary">Cancel</button>
                 <button onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
                   {saving ? 'Saving...' : form.id ? 'Update Lead' : 'Create Lead'}
                 </button>
@@ -349,11 +349,11 @@ export default function Leads() {
 
       {deleteOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
-          <div className="w-full max-w-md rounded-xl bg-white border border-slate-200 shadow-xl p-5">
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete this lead?</h3>
-            <p className="text-sm text-slate-600 mb-4">This action cannot be undone.</p>
+          <div className="w-full max-w-md rounded-xl bg-surface border border-line shadow-xl p-5">
+            <h3 className="text-lg font-semibold text-ink mb-2">Delete this lead?</h3>
+            <p className="text-sm text-ink-secondary mb-4">This action cannot be undone.</p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteOpen(false)} className="px-3 py-2 rounded-lg border border-slate-300">Cancel</button>
+              <button onClick={() => setDeleteOpen(false)} className="px-3 py-2 rounded-lg border border-line-strong">Cancel</button>
               <button onClick={handleDelete} disabled={deleting} className="px-3 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50">
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>

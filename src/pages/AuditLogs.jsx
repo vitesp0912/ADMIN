@@ -331,28 +331,28 @@ export default function AuditLogs() {
 
     if (changes.length === 0) {
       return (
-        <div className="mt-4 bg-gray-50 rounded-lg p-4 border border-gray-200">
-          <p className="text-sm text-gray-500 italic">No detailed changes available</p>
+        <div className="mt-4 bg-surface-muted rounded-lg p-4 border border-line">
+          <p className="text-sm text-ink-muted italic">No detailed changes available</p>
         </div>
       )
     }
 
     return (
-      <div className="mt-4 bg-gray-50 rounded-lg p-4 border border-gray-200">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+      <div className="mt-4 bg-surface-muted rounded-lg p-4 border border-line">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-3">
           What Changed
         </p>
         <div className="space-y-3">
           {changes.map((change, idx) => (
             <div key={idx} className="text-sm">
-              <span className="text-gray-600 font-medium">{change.field}</span>
+              <span className="text-ink-secondary font-medium">{change.field}</span>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {change.oldValue !== null && (
                   <span className="bg-red-50 text-red-700 px-2.5 py-1 rounded text-sm border border-red-100">
                     {change.oldValue}
                   </span>
                 )}
-                {change.oldValue !== null && <span className="text-gray-400">→</span>}
+                {change.oldValue !== null && <span className="text-ink-muted">→</span>}
                 <span className="bg-green-50 text-green-700 px-2.5 py-1 rounded text-sm border border-green-100">
                   {change.newValue || '(empty)'}
                 </span>
@@ -367,33 +367,33 @@ export default function AuditLogs() {
   // Render metadata section in expanded view
   const renderMetadata = (log) => {
     return (
-      <div className="mt-4 bg-slate-50 rounded-lg p-4 border border-slate-200">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+      <div className="mt-4 bg-surface-muted rounded-lg p-4 border border-line">
+        <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-3">
           Technical Details
         </p>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
-            <span className="text-slate-500">Timestamp</span>
-            <p className="text-slate-700 font-medium">{formatFullTimestamp(log.created_at)}</p>
+            <span className="text-ink-muted">Timestamp</span>
+            <p className="text-ink-secondary font-medium">{formatFullTimestamp(log.created_at)}</p>
           </div>
           <div>
-            <span className="text-slate-500">Source</span>
-            <p className="text-slate-700 font-medium capitalize">{log.source || 'System'}</p>
+            <span className="text-ink-muted">Source</span>
+            <p className="text-ink-secondary font-medium capitalize">{log.source || 'System'}</p>
           </div>
           <div>
-            <span className="text-slate-500">Actor Role</span>
-            <p className="text-slate-700 font-medium capitalize">{log.actor_role || 'System'}</p>
+            <span className="text-ink-muted">Actor Role</span>
+            <p className="text-ink-secondary font-medium capitalize">{log.actor_role || 'System'}</p>
           </div>
           {log.ip_address && (
             <div>
-              <span className="text-slate-500">IP Address</span>
-              <p className="text-slate-700 font-mono text-xs">{log.ip_address}</p>
+              <span className="text-ink-muted">IP Address</span>
+              <p className="text-ink-secondary font-mono text-xs">{log.ip_address}</p>
             </div>
           )}
           {log.user_agent && (
             <div className="col-span-2">
-              <span className="text-slate-500">Device</span>
-              <p className="text-slate-700 text-xs truncate" title={log.user_agent}>
+              <span className="text-ink-muted">Device</span>
+              <p className="text-ink-secondary text-xs truncate" title={log.user_agent}>
                 {formatUserAgent(log.user_agent)}
               </p>
             </div>
@@ -525,12 +525,12 @@ export default function AuditLogs() {
       return 'bg-emerald-50 text-emerald-700 border-emerald-200'
     }
     if (actionLower.includes('updated') || actionLower.includes('update') || actionLower.includes('price')) {
-      return 'bg-blue-50 text-blue-700 border-blue-200'
+      return 'bg-info-soft text-info border-transparent'
     }
     if (actionLower.includes('deleted') || actionLower.includes('delete')) {
       return 'bg-red-50 text-red-700 border-red-200'
     }
-    return 'bg-gray-50 text-gray-700 border-gray-200'
+    return 'bg-surface-muted text-ink-secondary border-line'
   }
 
   // Get entity icon
@@ -582,18 +582,18 @@ export default function AuditLogs() {
   // ============================================
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-muted">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="bg-surface border-b border-line sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-slate-100 rounded-lg">
-                <FileText className="w-5 h-5 text-slate-600" />
+              <div className="p-2 bg-surface-muted rounded-lg">
+                <FileText className="w-5 h-5 text-ink-secondary" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">Activity Log</h1>
-                <p className="text-gray-500 text-sm">Audit trail of all changes</p>
+                <h1 className="text-xl font-semibold text-ink">Activity Log</h1>
+                <p className="text-ink-muted text-sm">Audit trail of all changes</p>
               </div>
             </div>
             
@@ -601,7 +601,7 @@ export default function AuditLogs() {
               <button
                 onClick={handleRefresh}
                 disabled={logsLoading}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                className="p-2 text-ink-muted hover:text-ink-secondary hover:bg-surface-muted rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh"
               >
                 <RefreshCw className={`w-5 h-5 ${logsLoading ? 'animate-spin' : ''}`} />
@@ -614,17 +614,17 @@ export default function AuditLogs() {
       <div className="max-w-4xl mx-auto px-6 py-6">
         {/* Controls Bar */}
         {!loading && pumps.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+          <div className="bg-surface rounded-lg border border-line p-4 mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               {/* Pump Selector */}
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                <label className="block text-xs font-medium text-ink-muted mb-1.5">
                   PUMP
                 </label>
                 <select
                   value={selectedPumpId || ''}
                   onChange={(e) => handlePumpChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
+                  className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface-muted focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-surface transition-colors"
                 >
                   {pumps.map((pump) => (
                     <option key={pump.id} value={pump.id}>
@@ -640,8 +640,8 @@ export default function AuditLogs() {
                   onClick={() => setShowFilters(!showFilters)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     showFilters || activeFilterCount > 0
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-info-soft text-info border border-transparent'
+                      : 'bg-surface-muted text-ink-secondary hover:bg-gray-200'
                   }`}
                 >
                   <Filter className="w-4 h-4" />
@@ -657,43 +657,43 @@ export default function AuditLogs() {
 
             {/* Filters Panel */}
             {showFilters && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="mt-4 pt-4 border-t border-line">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Date From */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    <label className="block text-xs font-medium text-ink-muted mb-1.5">
                       FROM DATE
                     </label>
                     <input
                       type="date"
                       value={filters.dateFrom}
                       onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
 
                   {/* Date To */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    <label className="block text-xs font-medium text-ink-muted mb-1.5">
                       TO DATE
                     </label>
                     <input
                       type="date"
                       value={filters.dateTo}
                       onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
 
                   {/* Action Type */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    <label className="block text-xs font-medium text-ink-muted mb-1.5">
                       ACTION
                     </label>
                     <select
                       value={filters.action}
                       onChange={(e) => handleFilterChange('action', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Actions</option>
                       {filterOptions.actions.map((action) => (
@@ -706,13 +706,13 @@ export default function AuditLogs() {
 
                   {/* Entity Type */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    <label className="block text-xs font-medium text-ink-muted mb-1.5">
                       ENTITY
                     </label>
                     <select
                       value={filters.entityType}
                       onChange={(e) => handleFilterChange('entityType', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Entities</option>
                       {filterOptions.entityTypes.map((entity) => (
@@ -725,13 +725,13 @@ export default function AuditLogs() {
 
                   {/* Actor Role */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    <label className="block text-xs font-medium text-ink-muted mb-1.5">
                       PERFORMED BY
                     </label>
                     <select
                       value={filters.actorRole}
                       onChange={(e) => handleFilterChange('actorRole', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">Anyone</option>
                       {filterOptions.actorRoles.map((role) => (
@@ -747,7 +747,7 @@ export default function AuditLogs() {
                     <div className="flex items-end">
                       <button
                         onClick={clearFilters}
-                        className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-2 text-sm text-ink-secondary hover:text-ink hover:bg-surface-muted rounded-lg transition-colors"
                       >
                         <X className="w-4 h-4" />
                         Clear all
@@ -762,7 +762,7 @@ export default function AuditLogs() {
 
         {/* Loading State */}
         {loading && (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <div className="bg-surface rounded-lg border border-line p-12 text-center">
             <div className="animate-pulse">
               <div className="w-12 h-12 bg-gray-200 rounded-full mx-auto mb-4"></div>
               <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
@@ -772,10 +772,10 @@ export default function AuditLogs() {
 
         {/* Empty State */}
         {!loading && !logsLoading && logs.length === 0 && selectedPumpId && (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <div className="bg-surface rounded-lg border border-line p-12 text-center">
             <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg font-medium">No audit activity recorded</p>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-ink-secondary text-lg font-medium">No audit activity recorded</p>
+            <p className="text-ink-muted text-sm mt-1">
               {activeFilterCount > 0 
                 ? 'Try adjusting your filters to see more results'
                 : 'Changes to this pump will appear here'
@@ -784,7 +784,7 @@ export default function AuditLogs() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="mt-4 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                className="mt-4 text-blue-600 hover:text-info text-sm font-medium"
               >
                 Clear filters
               </button>
@@ -800,7 +800,7 @@ export default function AuditLogs() {
               return (
                 <div
                   key={log.id}
-                  className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-gray-300 transition-colors"
+                  className="bg-surface rounded-lg border border-line overflow-hidden hover:border-line-strong transition-colors"
                 >
                   {/* Main Content */}
                   <div className="p-4">
@@ -811,26 +811,26 @@ export default function AuditLogs() {
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${getActionColor(log.action_label)}`}>
                             {log.action_label}
                           </span>
-                          <span className="text-gray-900 font-medium flex items-center gap-1.5">
-                            <EntityIcon className="w-4 h-4 text-gray-400" />
+                          <span className="text-ink font-medium flex items-center gap-1.5">
+                            <EntityIcon className="w-4 h-4 text-ink-muted" />
                             {log.entity_label}
                           </span>
                         </div>
 
                         {/* Reason (if present) */}
                         {log.reason && (
-                          <p className="text-gray-600 text-sm mt-2 italic">
+                          <p className="text-ink-secondary text-sm mt-2 italic">
                             "{log.reason}"
                           </p>
                         )}
 
                         {/* Meta: Who + When */}
-                        <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 flex-wrap">
+                        <div className="flex items-center gap-4 mt-3 text-sm text-ink-muted flex-wrap">
                           <div className="flex items-center gap-1.5">
                             <User className="w-3.5 h-3.5" />
                             <span>{log.actor_name}</span>
                             {log.actor_role && log.actor_role !== 'system' && (
-                              <span className="text-gray-400">({log.actor_role})</span>
+                              <span className="text-ink-muted">({log.actor_role})</span>
                             )}
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -843,7 +843,7 @@ export default function AuditLogs() {
                       {/* Expand Button */}
                       <button
                         onClick={() => toggleExpand(log.id)}
-                        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 shrink-0 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink-secondary shrink-0 px-3 py-1.5 rounded-lg hover:bg-surface-muted transition-colors"
                       >
                         {expandedLogId === log.id ? (
                           <>
@@ -861,7 +861,7 @@ export default function AuditLogs() {
 
                     {/* Expanded Details */}
                     {expandedLogId === log.id && (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="mt-4 pt-4 border-t border-line">
                         {log.has_changes && renderChanges(log.old_values, log.new_values)}
                         {renderMetadata(log)}
                       </div>
@@ -877,7 +877,7 @@ export default function AuditLogs() {
                 <button
                   onClick={handleLoadMore}
                   disabled={logsLoading}
-                  className="px-8 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
+                  className="px-8 py-2.5 text-sm font-medium text-ink-secondary bg-surface border border-line-strong rounded-lg hover:bg-surface-muted disabled:opacity-50 transition-colors shadow-sm"
                 >
                   {logsLoading ? (
                     <span className="flex items-center gap-2">
@@ -888,7 +888,7 @@ export default function AuditLogs() {
                     'Load more'
                   )}
                 </button>
-                <p className="text-xs text-gray-400 mt-3">
+                <p className="text-xs text-ink-muted mt-3">
                   Showing {logs.length} of {totalCount.toLocaleString()} entries
                 </p>
               </div>
@@ -897,7 +897,7 @@ export default function AuditLogs() {
             {/* End of list indicator */}
             {!hasMore && logs.length > 0 && (
               <div className="text-center py-6">
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-ink-muted">
                   End of activity log • {totalCount.toLocaleString()} total entries
                 </p>
               </div>
@@ -909,14 +909,14 @@ export default function AuditLogs() {
         {logsLoading && logs.length === 0 && (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4 animate-pulse">
+              <div key={i} className="bg-surface rounded-lg border border-line p-4 animate-pulse">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="h-6 w-16 bg-gray-200 rounded"></div>
                   <div className="h-5 w-24 bg-gray-200 rounded"></div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="h-4 w-20 bg-gray-100 rounded"></div>
-                  <div className="h-4 w-28 bg-gray-100 rounded"></div>
+                  <div className="h-4 w-20 bg-surface-muted rounded"></div>
+                  <div className="h-4 w-28 bg-surface-muted rounded"></div>
                 </div>
               </div>
             ))}

@@ -1,13 +1,32 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { Moon, Sun } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('petrofi-theme') || 'light'
+    } catch {
+      return 'light'
+    }
+  })
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') root.classList.add('dark')
+    else root.classList.remove('dark')
+    try {
+      localStorage.setItem('petrofi-theme', theme)
+    } catch {
+      /* ignore */
+    }
+  }, [theme])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -15,12 +34,12 @@ export default function Login() {
     setError('')
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) throw error
+      if (loginError) throw loginError
 
       if (data.user) {
         navigate('/')
@@ -33,62 +52,116 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-2 text-gray-800">
-          PetroFI Admin
-        </h1>
-        <p className="text-center text-gray-600 mb-8">Sign in to access admin panel</p>
+    <div className="min-h-screen bg-canvas relative overflow-hidden">
+      {/* Atmosphere — subtle brand-tinted plane, not a flashy gradient stack */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 50% at 50% -10%, rgb(var(--brand-soft)), transparent 55%)',
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.035] dark:opacity-[0.06]"
+        aria-hidden
+        style={{
+          backgroundImage:
+            'linear-gradient(rgb(var(--ink)) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--ink)) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+        }}
+      />
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
+      <button
+        type="button"
+        className="absolute top-4 right-4 z-10 pf-btn-ghost !px-2"
+        onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="admin@example.com"
+      <div className="relative min-h-screen flex flex-col items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[420px] animate-fade-in">
+          {/* Brand hero */}
+          <div className="text-center mb-8">
+            <img
+              src="/app_icon.png"
+              alt="PetroFI"
+              className="w-[88px] h-[88px] mx-auto object-contain drop-shadow-sm"
+              width={88}
+              height={88}
             />
+            <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-ink leading-none">
+              PetroFI
+            </h1>
+            <p className="mt-2 text-[14px] text-ink-secondary">
+              Petrol pump admin console
+            </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="••••••••"
-            />
+          <div className="pf-card p-7 sm:p-8">
+            <div className="mb-6">
+              <h2 className="text-[18px] font-semibold text-ink tracking-tight">
+                Sign in
+              </h2>
+              <p className="text-[13px] text-ink-secondary mt-1">
+                Use your admin credentials to continue
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 rounded-control border border-transparent bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-[12px] font-semibold text-ink-secondary mb-1.5">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="pf-input !h-10"
+                  placeholder="admin@example.com"
+                  autoComplete="username"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-semibold text-ink-secondary mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pf-input !h-10"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="pf-btn-primary w-full !h-10 mt-2"
+              >
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          Note: Use your Supabase admin credentials
-        </p>
+          <p className="text-center text-[11px] text-ink-muted mt-6">
+            Secure access for PetroFI administrators
+          </p>
+        </div>
       </div>
     </div>
   )
 }
-

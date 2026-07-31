@@ -2,18 +2,24 @@ import { useState, useEffect, useMemo } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { isSupportAdminEmail, SUPPORT_ONLY_PATHS } from '../lib/authAccess'
-import { 
-  LayoutDashboard, 
-  Building2, 
-  Users, 
-  ShoppingCart, 
+import {
+  LayoutDashboard,
+  Building2,
+  Users,
+  ShoppingCart,
   UserRoundPlus,
-  Receipt, 
-  Gauge, 
+  Receipt,
+  Gauge,
   Settings,
   FileText,
   AlertTriangle,
-  LogOut
+  LogOut,
+  Menu,
+  X,
+  Search,
+  Moon,
+  Sun,
+  Bell,
 } from 'lucide-react'
 
 const ALL_NAV_ITEMS = [
@@ -29,12 +35,48 @@ const ALL_NAV_ITEMS = [
   { path: '/error-logs', icon: AlertTriangle, label: 'Error Logs', supportOnly: true },
 ]
 
+const PAGE_TITLES = {
+  '/': 'Dashboard',
+  '/pumps': 'Pumps',
+  '/users': 'Users',
+  '/sales': 'Sales',
+  '/leads': 'Leads',
+  '/expenses': 'Expenses',
+  '/meter-readings': 'Meter Readings',
+  '/settings': 'Settings',
+  '/audit-logs': 'Activity Log',
+  '/error-logs': 'Error Logs',
+}
+
+function getStoredTheme() {
+  try {
+    return localStorage.getItem('petrofi-theme') || 'light'
+  } catch {
+    return 'light'
+  }
+}
+
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isSupportAdmin, setIsSupportAdmin] = useState(false)
   const [accessReady, setAccessReady] = useState(false)
+  const [userEmail, setUserEmail] = useState('')
+  const [theme, setTheme] = useState(getStoredTheme)
+  const [search, setSearch] = useState('')
+  const [resetCount, setResetCount] = useState(0)
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') root.classList.add('dark')
+    else root.classList.remove('dark')
+    try {
+      localStorage.setItem('petrofi-theme', theme)
+    } catch {
+      /* ignore */
+    }
+  }, [theme])
 
   useEffect(() => {
     let cancelled = false
@@ -42,11 +84,13 @@ export default function Layout() {
       const { data: { user } } = await supabase.auth.getUser()
       if (cancelled) return
       setIsSupportAdmin(isSupportAdminEmail(user?.email))
+      setUserEmail(user?.email || '')
       setAccessReady(true)
     })()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsSupportAdmin(isSupportAdminEmail(session?.user?.email))
+      setUserEmail(session?.user?.email || '')
       setAccessReady(true)
     })
 
@@ -56,12 +100,29 @@ export default function Layout() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { count } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('forgot_password_requested', true)
+      if (!cancelled) setResetCount(count || 0)
+    })()
+    return () => { cancelled = true }
+  }, [location.pathname])
+
   const navItems = useMemo(
     () => ALL_NAV_ITEMS.filter((item) => isSupportAdmin || !item.supportOnly),
     [isSupportAdmin]
   )
 
-  // Redirect if a non-support user hits a restricted URL directly
+  const filteredNav = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return navItems
+    return navItems.filter((item) => item.label.toLowerCase().includes(q))
+  }, [navItems, search])
+
   useEffect(() => {
     if (!accessReady || isSupportAdmin) return
     if (SUPPORT_ONLY_PATHS.includes(location.pathname)) {
@@ -74,76 +135,173 @@ export default function Layout() {
     navigate('/login')
   }
 
+  const pageTitle = PAGE_TITLES[location.pathname]
+    || (location.pathname.match(/^\/pumps\/[^/]+\/information/)
+      ? 'Pump information'
+      : location.pathname.startsWith('/pumps/')
+        ? 'Pump data'
+        : 'PetroFI')
+
+  const NavLink = ({ item }) => {
+    const Icon = item.icon
+    const isActive =
+      item.path === '/'
+        ? location.pathname === '/'
+        : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+    return (
+      <Link
+        to={item.path}
+        onClick={() => setSidebarOpen(false)}
+        className={`pf-nav-item ${isActive ? 'pf-nav-item-active' : ''}`}
+      >
+        <Icon className="w-4 h-4 shrink-0 opacity-80" />
+        <span>{item.label}</span>
+      </Link>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Mobile Header */}
-      <div className="lg:hidden bg-gray-900 text-white p-4 flex items-center justify-between">
-        <h1 className="text-lg font-bold">PetroFI Admin</h1>
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 hover:bg-gray-800 rounded"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 w-64 bg-gray-900 text-white flex flex-col z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="p-6 border-b border-gray-800">
-          <h1 className="text-xl font-bold">PetroFI Admin</h1>
-          <p className="text-sm text-gray-400 mt-1">Admin Panel</p>
-        </div>
-        
-        <nav className="flex-1 overflow-y-auto p-4">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = location.pathname === item.path
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-2 transition-colors ${
-                  isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-800'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span>{item.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-gray-800">
+    <div className="min-h-screen bg-canvas">
+      <header className="lg:hidden sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur-sm">
+        <div className="h-14 px-4 flex items-center justify-between gap-3">
           <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 w-full transition-colors"
+            type="button"
+            className="pf-btn-ghost !px-2"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open navigation"
           >
-            <LogOut className="w-5 h-5" />
-            <span>Logout</span>
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="min-w-0 flex items-center gap-2.5">
+            <img
+              src="/app_icon.png"
+              alt=""
+              className="w-8 h-8 object-contain shrink-0"
+              width={32}
+              height={32}
+            />
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-ink truncate">PetroFI</p>
+              <p className="text-[11px] text-ink-muted truncate">{pageTitle}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="pf-btn-ghost !px-2"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Overlay for mobile */}
+      <aside
+        className={`fixed inset-y-0 left-0 w-[240px] z-50 flex flex-col border-r border-line bg-surface transform transition-transform duration-200 ease-out lg:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="h-14 px-4 flex items-center justify-between border-b border-line shrink-0 gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src="/app_icon.png"
+              alt="PetroFI"
+              className="w-9 h-9 object-contain shrink-0"
+              width={36}
+              height={36}
+            />
+            <div className="min-w-0">
+              <p className="text-[15px] font-semibold tracking-tight text-ink leading-tight">PetroFI</p>
+              <p className="text-[11px] text-ink-muted leading-tight">Admin console</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="lg:hidden pf-btn-ghost !px-2 shrink-0"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-3 pt-3 pb-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search navigation"
+              className="pf-input !pl-9 !h-8 text-[12px]"
+            />
+          </div>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
+          {filteredNav.map((item) => (
+            <NavLink key={item.path} item={item} />
+          ))}
+        </nav>
+
+        <div className="p-3 border-t border-line space-y-2">
+          {userEmail && (
+            <p className="px-3 text-[11px] text-ink-muted truncate" title={userEmail}>
+              {userEmail}
+            </p>
+          )}
+          <button type="button" onClick={handleLogout} className="pf-nav-item w-full">
+            <LogOut className="w-4 h-4" />
+            <span>Sign out</span>
+          </button>
+        </div>
+      </aside>
+
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-ink/40 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Main Content */}
-      <div className="lg:ml-64">
-        <div className="p-4 lg:p-8">
-          <Outlet context={{ isSupportAdmin, accessReady }} />
-        </div>
+      <div className="lg:ml-[240px] min-h-screen flex flex-col">
+        <header className="hidden lg:flex sticky top-0 z-30 h-14 items-center gap-4 px-8 border-b border-line bg-surface/90 backdrop-blur-sm">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[15px] font-semibold text-ink truncate">{pageTitle}</h1>
+          </div>
+          <Link
+            to="/"
+            className="pf-btn-ghost relative !px-2"
+            title="Password reset requests"
+          >
+            <Bell className="w-4 h-4" />
+            {resetCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-warn text-[10px] font-bold text-white flex items-center justify-center">
+                {resetCount > 9 ? '9+' : resetCount}
+              </span>
+            )}
+          </Link>
+          <button
+            type="button"
+            className="pf-btn-ghost !px-2"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          <div className="h-8 w-8 rounded-full bg-brand-50 text-brand-700 dark:bg-[rgb(var(--brand-soft))] dark:text-brand-300 text-[12px] font-semibold flex items-center justify-center">
+            {(userEmail || 'A').charAt(0).toUpperCase()}
+          </div>
+        </header>
+
+        <main
+          className={`flex-1 w-full mx-auto ${
+            location.pathname.startsWith('/pumps/')
+              ? 'p-3 sm:p-5 lg:p-6 max-w-none'
+              : 'p-4 sm:p-6 lg:p-8 max-w-[1440px]'
+          }`}
+        >
+          <Outlet context={{ isSupportAdmin, accessReady, theme, setTheme }} />
+        </main>
       </div>
     </div>
   )

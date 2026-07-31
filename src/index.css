@@ -2,16 +2,274 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+:root {
+  --canvas: 245 246 248;
+  --surface: 255 255 255;
+  --surface-muted: 238 240 243;
+  --surface-elevated: 255 255 255;
+  --ink: 17 24 39;
+  --ink-secondary: 91 100 114;
+  --ink-muted: 139 147 161;
+  --line: 226 229 234;
+  --line-strong: 203 208 216;
+  --ok: 15 123 76;
+  --ok-soft: 220 242 231;
+  --warn: 154 103 0;
+  --warn-soft: 255 244 214;
+  --danger: 180 35 24;
+  --danger-soft: 254 228 226;
+  --info: 23 92 211;
+  --info-soft: 224 236 255;
+  --brand: 11 110 153;
+  --brand-soft: 230 243 248;
 }
 
-* {
-  box-sizing: border-box;
+.dark {
+  --canvas: 15 18 22;
+  --surface: 23 27 33;
+  --surface-muted: 30 36 44;
+  --surface-elevated: 30 36 44;
+  --ink: 243 244 246;
+  --ink-secondary: 161 170 182;
+  --ink-muted: 107 116 130;
+  --line: 42 49 58;
+  --line-strong: 55 64 76;
+  --ok: 61 207 142;
+  --ok-soft: 18 52 38;
+  --warn: 224 180 75;
+  --warn-soft: 58 46 18;
+  --danger: 240 112 102;
+  --danger-soft: 58 24 22;
+  --info: 107 163 245;
+  --info-soft: 22 40 64;
+  --brand: 59 163 209;
+  --brand-soft: 18 48 65;
 }
 
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    margin: 0;
+    @apply bg-canvas text-ink font-sans;
+    font-feature-settings: 'tnum' 1, 'lnum' 1;
+    color-scheme: light;
+  }
+
+  .dark body,
+  html.dark {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  ::selection {
+    background: rgb(var(--brand-soft));
+  }
+
+  /* Scrollbars — light + dark */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line-strong)) rgb(var(--surface-muted));
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgb(var(--surface-muted));
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-strong));
+    border-radius: 8px;
+    border: 2px solid rgb(var(--surface-muted));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-muted));
+  }
+
+  .dark *::-webkit-scrollbar-track {
+    background: rgb(var(--surface));
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-strong));
+    border-color: rgb(var(--surface));
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-muted));
+  }
+}
+
+@layer components {
+  .pf-page {
+    @apply min-h-full animate-fade-in;
+  }
+
+  .pf-card {
+    @apply bg-surface border border-line rounded-card shadow-soft;
+  }
+
+  .pf-card-header {
+    @apply px-5 py-4 border-b border-line flex items-center justify-between gap-3;
+  }
+
+  .pf-section-title {
+    @apply text-[16px] font-semibold text-ink tracking-tight;
+  }
+
+  .pf-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-muted;
+  }
+
+  .pf-value {
+    @apply text-[28px] font-semibold leading-tight text-ink tabular-nums;
+  }
+
+  .pf-value-md {
+    @apply text-[22px] font-semibold leading-tight text-ink tabular-nums;
+  }
+
+  .pf-meta {
+    @apply text-[12px] text-ink-secondary;
+  }
+
+  .pf-btn {
+    @apply inline-flex items-center justify-center gap-2 h-9 px-3.5 rounded-control text-[13px] font-medium
+      transition-colors duration-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50
+      disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .pf-btn-primary {
+    @apply pf-btn bg-brand-500 text-white hover:bg-brand-600 dark:bg-brand-400 dark:text-ink dark:hover:bg-brand-300;
+  }
+
+  .pf-btn-secondary {
+    @apply pf-btn bg-surface border border-line text-ink hover:bg-surface-muted;
+  }
+
+  .pf-btn-ghost {
+    @apply pf-btn text-ink-secondary hover:bg-surface-muted hover:text-ink;
+  }
+
+  .pf-input {
+    @apply h-9 w-full px-3 rounded-control border border-line bg-surface text-[13px] text-ink
+      placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-brand-400/40 focus:border-brand-400;
+  }
+
+  .pf-table-wrap {
+    @apply overflow-auto rounded-control border border-line bg-surface;
+    max-height: min(70vh, 720px);
+  }
+
+  .pf-table {
+    @apply w-full text-[13px] border-collapse;
+  }
+
+  .pf-table thead {
+    @apply sticky top-0 z-10 bg-surface-muted;
+  }
+
+  .pf-table th {
+    @apply px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.05em]
+      text-ink-muted border-b border-line whitespace-nowrap bg-surface-muted;
+  }
+
+  .pf-table td {
+    @apply px-4 py-2.5 border-b border-line text-ink align-middle;
+  }
+
+  .pf-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .pf-table tbody tr {
+    @apply transition-colors duration-100 hover:bg-brand-50/60 dark:hover:bg-[rgb(var(--brand-soft))];
+  }
+
+  .pf-table tbody tr:nth-child(even) {
+    @apply bg-surface-muted/35;
+  }
+
+  .pf-table .num,
+  .pf-table td.num,
+  .pf-table th.num {
+    @apply text-right tabular-nums font-medium;
+  }
+
+  .pf-table.compact th,
+  .pf-table.compact td {
+    @apply py-2 px-3 text-[12px];
+  }
+
+  .pf-stat-strip {
+    @apply grid grid-cols-2 xl:grid-cols-4 gap-px bg-line border-b border-line;
+  }
+
+  .pf-stat-cell {
+    @apply px-4 py-3.5 sm:px-5 bg-surface;
+  }
+
+  .pf-module-nav {
+    @apply flex gap-1 px-3 py-2.5 min-w-max;
+  }
+
+  .pf-module-tab {
+    @apply h-8 px-3 rounded-control text-[12px] font-semibold whitespace-nowrap
+      text-ink-secondary transition-colors duration-100 inline-flex items-center gap-1.5;
+  }
+
+  .pf-module-tab:hover {
+    @apply bg-surface-muted text-ink;
+  }
+
+  .pf-module-tab-active {
+    @apply bg-[rgb(var(--brand-soft))] text-brand-700 dark:text-brand-300;
+  }
+
+  .pf-nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-control text-[13px] font-medium
+      text-ink-secondary transition-colors duration-100;
+  }
+
+  .pf-nav-item:hover {
+    @apply bg-surface-muted text-ink;
+  }
+
+  .pf-nav-item-active {
+    @apply bg-[rgb(var(--brand-soft))] text-brand-700 dark:text-brand-300 relative;
+  }
+
+  .pf-nav-item-active::before {
+    content: '';
+    @apply absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand-500 dark:bg-brand-400;
+  }
+
+  .pf-chip {
+    @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-control border border-line bg-surface
+      text-[13px] font-medium text-ink hover:bg-surface-muted transition-colors duration-100;
+  }
+
+  .pf-chip-primary {
+    @apply pf-chip border-transparent bg-brand-500 text-white hover:bg-brand-600 dark:bg-brand-400 dark:text-ink;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

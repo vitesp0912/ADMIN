@@ -1,23 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '../lib/supabase'
-import { Building2, Users, ShoppingCart, Receipt, TrendingUp, AlertCircle, Bell, ChevronDown, ChevronUp, Mail, Phone, User } from 'lucide-react'
 import { Link, useOutletContext } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 import { isSupportAdminEmail } from '../lib/authAccess'
+import { formatInr, formatCount, daysAgo } from '../lib/format'
+import KpiCard from '../components/ui/KpiCard'
+import StatusPill from '../components/ui/StatusPill'
+import EmptyState from '../components/ui/EmptyState'
+import { DashboardSkeleton } from '../components/ui/Skeleton'
+import { Bell, ChevronDown, ChevronUp } from 'lucide-react'
 
 export default function Dashboard() {
   const outletContext = useOutletContext() || {}
   const [localSupportAdmin, setLocalSupportAdmin] = useState(false)
   const isSupportAdmin = outletContext.isSupportAdmin ?? localSupportAdmin
 
-  useEffect(() => {
-    if (outletContext.accessReady) return
-    let cancelled = false
-    ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!cancelled) setLocalSupportAdmin(isSupportAdminEmail(user?.email))
-    })()
-    return () => { cancelled = true }
-  }, [outletContext.accessReady])
   const [stats, setStats] = useState({
     totalPumps: 0,
     activePumps: 0,
@@ -28,12 +24,20 @@ export default function Dashboard() {
   })
   const [loading, setLoading] = useState(true)
   const [recentPumps, setRecentPumps] = useState([])
-  // Forgot password requests state
   const [resetRequests, setResetRequests] = useState([])
-  const [resetLoading, setResetLoading] = useState(true)
   const [showResetList, setShowResetList] = useState(false)
   const [clearLoading, setClearLoading] = useState({})
-  // Clear forgot password request for a user
+
+  useEffect(() => {
+    if (outletContext.accessReady) return
+    let cancelled = false
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!cancelled) setLocalSupportAdmin(isSupportAdminEmail(user?.email))
+    })()
+    return () => { cancelled = true }
+  }, [outletContext.accessReady])
+
   const handleClearRequest = async (userId) => {
     setClearLoading((prev) => ({ ...prev, [userId]: true }))
     try {
@@ -41,94 +45,13 @@ export default function Dashboard() {
         .from('users')
         .update({ forgot_password_requested: false, forgot_password_requested_at: null })
         .eq('id', userId)
-      if (!error) {
-        setResetRequests((prev) => prev.filter(u => u.id !== userId))
-      }
+      if (!error) setResetRequests((prev) => prev.filter((u) => u.id !== userId))
     } finally {
       setClearLoading((prev) => ({ ...prev, [userId]: false }))
     }
   }
 
-  useEffect(() => {
-    fetchDashboardData()
-    fetchResetRequests()
-    // Optionally, refresh on window focus
-    const onFocus = () => fetchResetRequests()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [])
-
-  const fetchDashboardData = async () => {
-    try {
-      // ...existing code...
-      // Fetch pumps stats
-      const { data: pumps, error: pumpsError } = await supabase
-        .from('pumps')
-        .select('id, is_active, registration_status')
-
-      if (pumpsError) throw pumpsError
-
-      const totalPumps = pumps?.length || 0
-      const activePumps = pumps?.filter(p => p.is_active).length || 0
-      const pendingPumps = pumps?.filter(p => p.registration_status === 'pending').length || 0
-
-      // Fetch users count
-      const { count: totalUsers, error: usersError } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-
-      if (usersError) throw usersError
-
-      // Fetch sales total (last 30 days)
-      const thirtyDaysAgo = new Date()
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-      const { data: sales, error: salesError } = await supabase
-        .from('sales')
-        .select('total_amount')
-        .gte('date_time', thirtyDaysAgo.toISOString())
-
-      if (salesError) throw salesError
-
-      const totalSales = sales?.reduce((sum, s) => sum + (parseFloat(s.total_amount) || 0), 0) || 0
-
-      // Fetch expenses total (last 30 days)
-      const { data: expenses, error: expensesError } = await supabase
-        .from('expenses')
-        .select('amount')
-        .gte('date_time', thirtyDaysAgo.toISOString())
-
-      if (expensesError) throw expensesError
-
-      const totalExpenses = expenses?.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0) || 0
-
-      const { data: recent, error: recentError } = await supabase
-        .from('pumps')
-        .select('id, name, pump_code, registration_status, is_active, created_at')
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      if (recentError) throw recentError
-
-      setStats({
-        totalPumps,
-        activePumps,
-        pendingPumps,
-        totalUsers: totalUsers || 0,
-        totalSales,
-        totalExpenses,
-      })
-      setRecentPumps(recent || [])
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Fetch forgot password requests
   const fetchResetRequests = async () => {
-    setResetLoading(true)
     try {
       const { data, error } = await supabase
         .from('users')
@@ -137,243 +60,273 @@ export default function Dashboard() {
         .order('forgot_password_requested_at', { ascending: true })
       if (error) throw error
       setResetRequests(data || [])
-    } catch (err) {
+    } catch {
       setResetRequests([])
-    } finally {
-      setResetLoading(false)
     }
   }
+
+  const fetchDashboardData = async () => {
+    try {
+      const thirtyDaysAgo = daysAgo(29)
+
+      const [pumpsRes, usersRes, salesRes, expensesRes, recentRes] = await Promise.all([
+        supabase.from('pumps').select('id, is_active, registration_status'),
+        supabase.from('users').select('*', { count: 'exact', head: true }),
+        supabase
+          .from('sales')
+          .select('total_amount')
+          .gte('date_time', thirtyDaysAgo.toISOString()),
+        supabase
+          .from('expenses')
+          .select('amount')
+          .gte('date_time', thirtyDaysAgo.toISOString()),
+        supabase
+          .from('pumps')
+          .select('id, name, pump_code, registration_status, is_active, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ])
+
+      if (pumpsRes.error) throw pumpsRes.error
+      const pumps = pumpsRes.data || []
+
+      const totalSales = (salesRes.data || []).reduce(
+        (sum, s) => sum + (parseFloat(s.total_amount) || 0),
+        0
+      )
+      const totalExpenses = (expensesRes.data || []).reduce(
+        (sum, e) => sum + (parseFloat(e.amount) || 0),
+        0
+      )
+
+      setStats({
+        totalPumps: pumps.length,
+        activePumps: pumps.filter((p) => p.is_active).length,
+        pendingPumps: pumps.filter((p) => p.registration_status === 'pending').length,
+        totalUsers: usersRes.count || 0,
+        totalSales,
+        totalExpenses,
+      })
+      setRecentPumps(recentRes.data || [])
+      await fetchResetRequests()
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDashboardData()
+    const onFocus = () => fetchResetRequests()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   const statCards = useMemo(() => {
     const cards = [
       {
-        title: 'Total Pumps',
-        value: stats.totalPumps,
-        icon: Building2,
-        color: 'blue',
-        link: '/pumps',
+        title: 'Total pumps',
+        value: formatCount(stats.totalPumps),
+        meta: 'All registered pumps',
+        href: '/pumps',
+        status: 'neutral',
       },
       {
-        title: 'Active Pumps',
-        value: stats.activePumps,
-        icon: Building2,
-        color: 'green',
-        link: '/pumps',
+        title: 'Active pumps',
+        value: formatCount(stats.activePumps),
+        meta: 'Currently active',
+        href: '/pumps',
+        status: 'ok',
+        statusLabel: 'Live',
       },
       {
-        title: 'Pending Registrations',
-        value: stats.pendingPumps,
-        icon: AlertCircle,
-        color: 'yellow',
-        link: '/pumps',
+        title: 'Pending registrations',
+        value: formatCount(stats.pendingPumps),
+        meta: 'Awaiting approval',
+        href: '/pumps',
+        status: stats.pendingPumps > 0 ? 'warn' : 'ok',
+        statusLabel: stats.pendingPumps > 0 ? 'Action' : 'Clear',
       },
     ]
 
     if (isSupportAdmin) {
       cards.push(
         {
-          title: 'Total Users',
-          value: stats.totalUsers,
-          icon: Users,
-          color: 'purple',
-          link: '/users',
+          title: 'Total users',
+          value: formatCount(stats.totalUsers),
+          meta: 'Across all pumps',
+          href: '/users',
+          status: 'info',
         },
         {
           title: 'Sales (30 days)',
-          value: `₹${stats.totalSales.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
-          icon: ShoppingCart,
-          color: 'green',
-          link: '/sales',
+          value: formatInr(stats.totalSales),
+          meta: 'Portfolio total',
+          href: '/sales',
+          status: 'neutral',
         },
         {
           title: 'Expenses (30 days)',
-          value: `₹${stats.totalExpenses.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,
-          icon: Receipt,
-          color: 'red',
-          link: '/expenses',
-        },
+          value: formatInr(stats.totalExpenses),
+          meta: 'Portfolio total',
+          href: '/expenses',
+          status: 'neutral',
+        }
       )
     }
 
     return cards
   }, [stats, isSupportAdmin])
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading dashboard...</p>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <DashboardSkeleton />
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Forgot Password Requests Notification */}
-      <div className="w-full max-w-3xl mx-auto mt-4 mb-4 px-2">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl shadow flex flex-col sm:flex-row items-start sm:items-center gap-2 px-4 py-3 relative">
-          <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => setShowResetList(v => !v)}>
-            <Bell className="w-5 h-5 text-yellow-600" />
-            <span className="font-semibold text-yellow-800 text-sm">
+    <div className="pf-page space-y-6">
+      <div>
+        <h1 className="text-[22px] font-semibold tracking-tight text-ink">Dashboard</h1>
+        <p className="pf-meta mt-1">Manage pumps, registrations, and support queues</p>
+      </div>
+
+      <div className="pf-card overflow-hidden">
+        <button
+          type="button"
+          className="w-full px-5 py-3.5 flex items-center gap-3 text-left hover:bg-surface-muted/60 transition-colors"
+          onClick={() => setShowResetList((v) => !v)}
+        >
+          <Bell className="w-4 h-4 text-warn shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-ink">
               {resetRequests.length > 0
-                ? `${resetRequests.length} Password Reset Request${resetRequests.length > 1 ? 's' : ''}`
-                : 'No Password Reset Requests'}
-            </span>
-            {showResetList ? <ChevronUp className="w-4 h-4 text-yellow-600" /> : <ChevronDown className="w-4 h-4 text-yellow-600" />}
+                ? `${resetRequests.length} password reset request${resetRequests.length > 1 ? 's' : ''}`
+                : 'No password reset requests'}
+            </p>
+            <p className="text-[12px] text-ink-secondary">
+              Clear requests after assisting the user
+            </p>
           </div>
-          {showResetList && (
-            <div className="w-full mt-3 sm:mt-0">
-              {resetRequests.length > 0 ? (
-                <div className="flex flex-col gap-2 w-full">
-                  <div className="hidden sm:grid grid-cols-5 gap-2 font-bold text-yellow-900 text-xs sm:text-sm px-2">
-                    <div>Name</div>
-                    <div>Phone</div>
-                    <div>Role</div>
-                    <div>Requested At</div>
-                    <div>Actions</div>
-                  </div>
-                  {resetRequests.map((u) => (
-                    <div key={u.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-yellow-100/60 rounded-lg px-2 py-2 text-xs sm:text-sm">
-                      <div className="flex items-center gap-1"><User className="w-4 h-4 text-gray-400" />{u.name || 'N/A'}</div>
-                      <div className="flex items-center gap-1"><Phone className="w-4 h-4 text-gray-400" />{u.phone || 'N/A'}</div>
-                      <div>{u.role || 'N/A'}</div>
-                      <div>{u.forgot_password_requested_at ? new Date(u.forgot_password_requested_at).toLocaleString() : ''}</div>
-                      <div className="flex gap-2">
-                        <button
-                          className="bg-gray-200 text-gray-700 rounded px-2 py-1 text-xs font-semibold hover:bg-gray-300 transition-all duration-200 disabled:opacity-60"
-                          onClick={() => handleClearRequest(u.id)}
-                          disabled={clearLoading[u.id]}
-                        >
-                          {clearLoading[u.id] ? 'Clearing...' : 'Clear Request'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-yellow-700 text-sm px-2 py-2">No pending password reset requests.</div>
-              )}
-            </div>
+          <StatusPill tone={resetRequests.length ? 'warn' : 'ok'}>
+            {resetRequests.length}
+          </StatusPill>
+          {showResetList ? (
+            <ChevronUp className="w-4 h-4 text-ink-muted" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-ink-muted" />
           )}
-        </div>
-      </div>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        <p className="text-gray-600">Overview of your petrol pump management system</p>
-      </div>
+        </button>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        {statCards.map((stat, index) => {
-          const Icon = stat.icon
-          const colorGradients = {
-            blue: 'from-blue-500 to-blue-600',
-            green: 'from-green-500 to-green-600',
-            yellow: 'from-yellow-400 to-yellow-500',
-            purple: 'from-purple-500 to-purple-600',
-            red: 'from-red-500 to-red-600',
-          }
-          const iconBgColors = {
-            blue: 'bg-blue-100',
-            green: 'bg-green-100',
-            yellow: 'bg-yellow-100',
-            purple: 'bg-purple-100',
-            red: 'bg-red-100',
-          }
-          const iconColors = {
-            blue: 'text-blue-600',
-            green: 'text-green-600',
-            yellow: 'text-yellow-600',
-            purple: 'text-purple-600',
-            red: 'text-red-600',
-          }
-
-          return (
-            <Link
-              key={index}
-              to={stat.link}
-              className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl hover:scale-105 transition-all duration-300 group"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{stat.title}</p>
-                  <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
+        {showResetList && (
+          <div className="border-t border-line p-4 space-y-2 bg-surface-muted/30">
+            {resetRequests.length === 0 ? (
+              <p className="text-[13px] text-ink-muted px-1 py-2">No pending requests.</p>
+            ) : (
+              resetRequests.map((u) => (
+                <div
+                  key={u.id}
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-control border border-line bg-surface px-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium text-ink truncate">{u.name || '—'}</p>
+                    <p className="text-[11px] text-ink-muted truncate">
+                      {u.phone || '—'} · {u.role || '—'}
+                      {u.forgot_password_requested_at
+                        ? ` · ${new Date(u.forgot_password_requested_at).toLocaleString('en-IN')}`
+                        : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="pf-btn-secondary !h-8 shrink-0"
+                    disabled={clearLoading[u.id]}
+                    onClick={() => handleClearRequest(u.id)}
+                  >
+                    {clearLoading[u.id] ? 'Clearing…' : 'Clear request'}
+                  </button>
                 </div>
-                <div className={`${iconBgColors[stat.color]} p-4 rounded-xl group-hover:scale-110 transition-transform duration-300`}>
-                  <Icon className={`w-7 h-7 ${iconColors[stat.color]}`} />
-                </div>
-              </div>
-            </Link>
-          )
-        })}
-      </div>
-
-      {/* Recent Pumps */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-shadow duration-300">
-        <h2 className="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
-          <Building2 className="w-6 h-6 text-blue-600" />
-          Recent Pumps
-        </h2>
-        {recentPumps.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-            <Building2 className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-            <p className="text-gray-500 font-medium">No pumps found</p>
+              ))
+            )}
           </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {statCards.map((card) => (
+          <KpiCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            meta={card.meta}
+            href={card.href}
+            status={card.status}
+            statusLabel={card.statusLabel}
+          />
+        ))}
+      </div>
+
+      <div className="pf-card overflow-hidden">
+        <div className="pf-card-header">
+          <div>
+            <h2 className="pf-section-title">Recent pumps</h2>
+            <p className="pf-meta mt-0.5">Latest registrations</p>
+          </div>
+          <Link to="/pumps" className="text-[12px] font-medium text-brand-600 dark:text-brand-300">
+            View all
+          </Link>
+        </div>
+
+        {recentPumps.length === 0 ? (
+          <EmptyState
+            title="No pumps found"
+            description="New pump registrations will appear here."
+            action={<Link to="/pumps" className="pf-btn-primary">Go to pumps</Link>}
+          />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-100 to-gray-50">
+          <div className="pf-table-wrap !border-0 !rounded-none">
+            <table className="pf-table">
+              <thead>
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Pump Code</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Registration</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Action</th>
+                  <th>Pump code</th>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Registration</th>
+                  <th>Created</th>
+                  <th className="text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {recentPumps.map((pump) => (
-                  <tr key={pump.id} className="hover:bg-blue-50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-gray-900">{pump.pump_code || 'N/A'}</td>
-                    <td className="px-6 py-4 font-medium text-gray-900">{pump.name}</td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          pump.is_active
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {pump.is_active ? '✓ Active' : '✗ Inactive'}
-                      </span>
+                  <tr key={pump.id}>
+                    <td className="font-mono text-[12px]">{pump.pump_code || '—'}</td>
+                    <td className="font-medium">{pump.name}</td>
+                    <td>
+                      <StatusPill tone={pump.is_active ? 'ok' : 'neutral'}>
+                        {pump.is_active ? 'Active' : 'Inactive'}
+                      </StatusPill>
                     </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    <td>
+                      <StatusPill
+                        tone={
                           pump.registration_status === 'approved'
-                            ? 'bg-blue-100 text-blue-800'
+                            ? 'info'
                             : pump.registration_status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
+                              ? 'warn'
+                              : 'danger'
+                        }
                       >
-                        {pump.registration_status === 'approved' ? '✓ Approved' :
-                         pump.registration_status === 'pending' ? '⏳ Pending' :
-                         pump.registration_status === 'rejected' ? '✗ Rejected' : 'N/A'}
-                      </span>
+                        {pump.registration_status || '—'}
+                      </StatusPill>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(pump.created_at).toLocaleDateString()}
+                    <td className="text-ink-secondary whitespace-nowrap">
+                      {pump.created_at
+                        ? new Date(pump.created_at).toLocaleDateString('en-IN')
+                        : '—'}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="text-right">
                       <Link
                         to={`/pumps/${pump.id}`}
-                        className="text-blue-600 hover:text-blue-800 font-semibold hover:underline transition-colors"
+                        className="text-[12px] font-semibold text-brand-600 dark:text-brand-300"
                       >
-                        View →
+                        Open
                       </Link>
                     </td>
                   </tr>
@@ -386,4 +339,3 @@ export default function Dashboard() {
     </div>
   )
 }
-

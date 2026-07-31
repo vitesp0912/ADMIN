@@ -247,7 +247,7 @@ export default function ErrorLogs() {
     if (type.includes('permission')) return 'bg-pink-50 text-pink-700 border-pink-200'
     if (type.includes('timeout')) return 'bg-amber-50 text-amber-700 border-amber-200'
     if (type.includes('payment')) return 'bg-rose-50 text-rose-700 border-rose-200'
-    return 'bg-gray-50 text-gray-700 border-gray-200'
+    return 'bg-surface-muted text-ink-secondary border-line'
   }
 
   // Format device info for display
@@ -290,7 +290,7 @@ export default function ErrorLogs() {
   // Render error details section
   const renderErrorDetails = (log) => {
     return (
-      <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+      <div className="mt-4 pt-4 border-t border-line space-y-4">
         {/* Error Message & Stack */}
         <div className="bg-red-50 rounded-lg p-4 border border-red-100">
           <p className="text-xs font-semibold text-red-600 uppercase tracking-wide mb-2">
@@ -313,48 +313,48 @@ export default function ErrorLogs() {
         </div>
 
         {/* Context Info */}
-        <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+        <div className="bg-surface-muted rounded-lg p-4 border border-line">
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-3">
             Context
           </p>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <span className="text-slate-500">User</span>
-              <p className="text-slate-700 font-medium">{log.user_name || 'Unknown'}</p>
+              <span className="text-ink-muted">User</span>
+              <p className="text-ink-secondary font-medium">{log.user_name || 'Unknown'}</p>
             </div>
             <div>
-              <span className="text-slate-500">Pump</span>
-              <p className="text-slate-700 font-medium">
+              <span className="text-ink-muted">Pump</span>
+              <p className="text-ink-secondary font-medium">
                 {log.pump_name || 'Unknown'}
                 {log.pump_code && (
-                  <span className="ml-2 text-xs text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded">{log.pump_code}</span>
+                  <span className="ml-2 text-xs text-ink-muted font-mono bg-surface-muted px-2 py-0.5 rounded">{log.pump_code}</span>
                 )}
               </p>
             </div>
             <div>
-              <span className="text-slate-500">Timestamp</span>
-              <p className="text-slate-700 font-medium">{formatFullTimestamp(log.created_at)}</p>
+              <span className="text-ink-muted">Timestamp</span>
+              <p className="text-ink-secondary font-medium">{formatFullTimestamp(log.created_at)}</p>
             </div>
             <div>
-              <span className="text-slate-500">Screen</span>
-              <p className="text-slate-700 font-medium">{log.screen_label || 'Unknown'}</p>
+              <span className="text-ink-muted">Screen</span>
+              <p className="text-ink-secondary font-medium">{log.screen_label || 'Unknown'}</p>
             </div>
             {log.action_attempted && (
               <div>
-                <span className="text-slate-500">Action Attempted</span>
-                <p className="text-slate-700 font-medium">{log.action_attempted}</p>
+                <span className="text-ink-muted">Action Attempted</span>
+                <p className="text-ink-secondary font-medium">{log.action_attempted}</p>
               </div>
             )}
             {log.phone && (
               <div>
-                <span className="text-slate-500">User Phone</span>
-                <p className="text-slate-700 font-mono text-xs">{log.phone}</p>
+                <span className="text-ink-muted">User Phone</span>
+                <p className="text-ink-secondary font-mono text-xs">{log.phone}</p>
               </div>
             )}
             {log.app_version && (
               <div>
-                <span className="text-slate-500">App Version</span>
-                <p className="text-slate-700 font-mono text-xs">{log.app_version}</p>
+                <span className="text-ink-muted">App Version</span>
+                <p className="text-ink-secondary font-mono text-xs">{log.app_version}</p>
               </div>
             )}
           </div>
@@ -362,11 +362,11 @@ export default function ErrorLogs() {
 
         {/* Device Info */}
         {log.device_info && (
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          <div className="bg-surface-muted rounded-lg p-4 border border-line">
+            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
               Device
             </p>
-            <p className="text-sm text-gray-700">{formatDeviceInfo(log.device_info)}</p>
+            <p className="text-sm text-ink-secondary">{formatDeviceInfo(log.device_info)}</p>
           </div>
         )}
 
@@ -405,9 +405,9 @@ export default function ErrorLogs() {
   // ============================================
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-muted">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="bg-surface border-b border-line sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -415,21 +415,21 @@ export default function ErrorLogs() {
                 <AlertTriangle className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">Error Logs</h1>
-                <p className="text-gray-500 text-sm">Application errors and issues</p>
+                <h1 className="text-xl font-semibold text-ink">Error Logs</h1>
+                <p className="text-ink-muted text-sm">Application errors and issues</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
               {totalCount > 0 && (
-                <span className="text-sm text-gray-500 mr-2">
+                <span className="text-sm text-ink-muted mr-2">
                   {totalCount.toLocaleString()} total errors
                 </span>
               )}
               <button
                 onClick={handleRefresh}
                 disabled={loading || logsLoading}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                className="p-2 text-ink-muted hover:text-ink-secondary hover:bg-surface-muted rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh"
               >
                 <RefreshCw className={`w-5 h-5 ${(loading || logsLoading) ? 'animate-spin' : ''}`} />
@@ -441,7 +441,7 @@ export default function ErrorLogs() {
 
       <div className="max-w-5xl mx-auto px-6 py-6">
         {/* Filters Bar */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+        <div className="bg-surface rounded-lg border border-line p-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             {/* Quick Stats */}
             <div className="flex-1 flex items-center gap-4 text-sm">
@@ -460,8 +460,8 @@ export default function ErrorLogs() {
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 showFilters || activeFilterCount > 0
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-info-soft text-info border border-transparent'
+                  : 'bg-surface-muted text-ink-secondary hover:bg-gray-200'
               }`}
             >
               <Filter className="w-4 h-4" />
@@ -476,17 +476,17 @@ export default function ErrorLogs() {
 
           {/* Filters Panel */}
           {showFilters && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="mt-4 pt-4 border-t border-line">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Error Type */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                  <label className="block text-xs font-medium text-ink-muted mb-1.5">
                     ERROR TYPE
                   </label>
                   <select
                     value={filters.errorType}
                     onChange={(e) => handleFilterChange('errorType', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">All Types</option>
                     {filterOptions.errorTypes.map((type) => (
@@ -499,13 +499,13 @@ export default function ErrorLogs() {
 
                 {/* Screen Name */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                  <label className="block text-xs font-medium text-ink-muted mb-1.5">
                     SCREEN
                   </label>
                   <select
                     value={filters.screenName}
                     onChange={(e) => handleFilterChange('screenName', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">All Screens</option>
                     {filterOptions.screenNames.map((screen) => (
@@ -518,13 +518,13 @@ export default function ErrorLogs() {
 
                 {/* Resolution Status */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                  <label className="block text-xs font-medium text-ink-muted mb-1.5">
                     STATUS
                   </label>
                   <select
                     value={filters.showResolved}
                     onChange={(e) => handleFilterChange('showResolved', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">All Errors</option>
                     <option value="false">Unresolved Only</option>
@@ -537,7 +537,7 @@ export default function ErrorLogs() {
                   <div className="flex items-end">
                     <button
                       onClick={clearFilters}
-                      className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm text-ink-secondary hover:text-ink hover:bg-surface-muted rounded-lg transition-colors"
                     >
                       <X className="w-4 h-4" />
                       Clear all
@@ -551,7 +551,7 @@ export default function ErrorLogs() {
 
         {/* Loading State */}
         {loading && (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <div className="bg-surface rounded-lg border border-line p-12 text-center">
             <div className="animate-pulse">
               <div className="w-12 h-12 bg-gray-200 rounded-full mx-auto mb-4"></div>
               <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
@@ -561,10 +561,10 @@ export default function ErrorLogs() {
 
         {/* Empty State */}
         {!loading && !logsLoading && logs.length === 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <div className="bg-surface rounded-lg border border-line p-12 text-center">
             <CheckCircle className="w-12 h-12 text-green-300 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg font-medium">No errors found</p>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-ink-secondary text-lg font-medium">No errors found</p>
+            <p className="text-ink-muted text-sm mt-1">
               {activeFilterCount > 0 
                 ? 'Try adjusting your filters to see more results'
                 : 'All systems are running smoothly'
@@ -573,7 +573,7 @@ export default function ErrorLogs() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="mt-4 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                className="mt-4 text-blue-600 hover:text-info text-sm font-medium"
               >
                 Clear filters
               </button>
@@ -587,10 +587,10 @@ export default function ErrorLogs() {
             {logs.map((log) => (
               <div
                 key={log.id}
-                className={`bg-white rounded-lg border overflow-hidden transition-colors ${
+                className={`bg-surface rounded-lg border overflow-hidden transition-colors ${
                   log.is_resolved 
                     ? 'border-green-200 bg-green-50/30' 
-                    : 'border-gray-200 hover:border-red-200'
+                    : 'border-line hover:border-red-200'
                 }`}
               >
                 {/* Main Content */}
@@ -602,7 +602,7 @@ export default function ErrorLogs() {
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${getErrorTypeColor(log.error_type)}`}>
                           {log.error_type_label}
                         </span>
-                        <span className="text-gray-500 text-sm flex items-center gap-1">
+                        <span className="text-ink-muted text-sm flex items-center gap-1">
                           <Layers className="w-3.5 h-3.5" />
                           {log.screen_label || 'Unknown Screen'}
                         </span>
@@ -615,13 +615,13 @@ export default function ErrorLogs() {
                       </div>
 
                       {/* Error Message Preview */}
-                      <p className="text-gray-800 text-sm mt-2 line-clamp-2">
+                      <p className="text-ink text-sm mt-2 line-clamp-2">
                         {log.error_message}
                       </p>
 
                       {/* User & Pump Info */}
                       <div className="flex items-center gap-3 mt-3 text-sm">
-                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                        <div className="flex items-center gap-1.5 bg-info-soft text-info px-2 py-1 rounded">
                           <User className="w-3.5 h-3.5" />
                           <span className="font-medium">{log.user_name || log.phone || 'Unknown'}</span>
                         </div>
@@ -635,13 +635,13 @@ export default function ErrorLogs() {
                       </div>
 
                       {/* Meta Info */}
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 flex-wrap">
+                      <div className="flex items-center gap-4 mt-2 text-sm text-ink-muted flex-wrap">
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5" />
                           <span>{formatTime(log.created_at)}</span>
                         </div>
                         {log.phone && log.user_name && log.user_name !== log.phone && (
-                          <div className="flex items-center gap-1.5 text-gray-400">
+                          <div className="flex items-center gap-1.5 text-ink-muted">
                             <span>({log.phone})</span>
                           </div>
                         )}
@@ -657,7 +657,7 @@ export default function ErrorLogs() {
                     {/* Expand Button */}
                     <button
                       onClick={() => toggleExpand(log.id)}
-                      className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 shrink-0 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink-secondary shrink-0 px-3 py-1.5 rounded-lg hover:bg-surface-muted transition-colors"
                     >
                       {expandedLogId === log.id ? (
                         <>
@@ -685,7 +685,7 @@ export default function ErrorLogs() {
                 <button
                   onClick={handleLoadMore}
                   disabled={logsLoading}
-                  className="px-8 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-sm"
+                  className="px-8 py-2.5 text-sm font-medium text-ink-secondary bg-surface border border-line-strong rounded-lg hover:bg-surface-muted disabled:opacity-50 transition-colors shadow-sm"
                 >
                   {logsLoading ? (
                     <span className="flex items-center gap-2">
@@ -696,7 +696,7 @@ export default function ErrorLogs() {
                     'Show more'
                   )}
                 </button>
-                <p className="text-xs text-gray-400 mt-3">
+                <p className="text-xs text-ink-muted mt-3">
                   Showing {logs.length} of {totalCount.toLocaleString()} errors
                 </p>
               </div>
@@ -705,7 +705,7 @@ export default function ErrorLogs() {
             {/* End of list indicator */}
             {!hasMore && logs.length > 0 && (
               <div className="text-center py-6">
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-ink-muted">
                   End of error logs • {totalCount.toLocaleString()} total entries
                 </p>
               </div>
