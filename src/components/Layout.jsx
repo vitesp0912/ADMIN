@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { isSupportAdminEmail, SUPPORT_ONLY_PATHS } from '../lib/authAccess'
+import PasswordResetBell from './PasswordResetBell'
 import {
   LayoutDashboard,
   Building2,
@@ -19,7 +20,6 @@ import {
   Search,
   Moon,
   Sun,
-  Bell,
 } from 'lucide-react'
 
 const ALL_NAV_ITEMS = [
@@ -56,6 +56,13 @@ function getStoredTheme() {
   }
 }
 
+function pumpPageTitle(pathname) {
+  if (pathname.match(/^\/pumps\/[^/]+\/information/)) return 'Pump information'
+  if (pathname.match(/^\/pumps\/[^/]+\/setup/)) return 'Pump setup'
+  if (pathname.startsWith('/pumps/')) return 'Pump data'
+  return 'PetroFI'
+}
+
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -65,7 +72,6 @@ export default function Layout() {
   const [userEmail, setUserEmail] = useState('')
   const [theme, setTheme] = useState(getStoredTheme)
   const [search, setSearch] = useState('')
-  const [resetCount, setResetCount] = useState(0)
 
   useEffect(() => {
     const root = document.documentElement
@@ -100,18 +106,6 @@ export default function Layout() {
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const { count } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-        .eq('forgot_password_requested', true)
-      if (!cancelled) setResetCount(count || 0)
-    })()
-    return () => { cancelled = true }
-  }, [location.pathname])
-
   const navItems = useMemo(
     () => ALL_NAV_ITEMS.filter((item) => isSupportAdmin || !item.supportOnly),
     [isSupportAdmin]
@@ -135,14 +129,9 @@ export default function Layout() {
     navigate('/login')
   }
 
-  const pageTitle = PAGE_TITLES[location.pathname]
-    || (location.pathname.match(/^\/pumps\/[^/]+\/information/)
-      ? 'Pump information'
-      : location.pathname.startsWith('/pumps/')
-        ? 'Pump data'
-        : 'PetroFI')
+  const pageTitle = PAGE_TITLES[location.pathname] || pumpPageTitle(location.pathname)
 
-  const NavLink = ({ item }) => {
+  const NavLinkItem = ({ item }) => {
     const Icon = item.icon
     const isActive =
       item.path === '/'
@@ -185,6 +174,7 @@ export default function Layout() {
               <p className="text-[11px] text-ink-muted truncate leading-tight">{pageTitle}</p>
             </div>
           </div>
+          <PasswordResetBell />
           <button
             type="button"
             className="pf-btn-ghost !px-2 shrink-0"
@@ -239,7 +229,7 @@ export default function Layout() {
 
         <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
           {filteredNav.map((item) => (
-            <NavLink key={item.path} item={item} />
+            <NavLinkItem key={item.path} item={item} />
           ))}
         </nav>
 
@@ -264,22 +254,11 @@ export default function Layout() {
       )}
 
       <div className="lg:ml-[240px] min-h-screen flex flex-col">
-        <header className="hidden lg:flex sticky top-0 z-30 h-14 items-center gap-4 px-8 border-b border-line bg-surface/90 backdrop-blur-sm">
+        <header className="hidden lg:flex sticky top-0 z-30 h-14 items-center gap-3 px-8 border-b border-line bg-surface/90 backdrop-blur-sm">
           <div className="min-w-0 flex-1">
             <h1 className="text-[15px] font-semibold text-ink truncate">{pageTitle}</h1>
           </div>
-          <Link
-            to="/"
-            className="pf-btn-ghost relative !px-2"
-            title="Password reset requests"
-          >
-            <Bell className="w-4 h-4" />
-            {resetCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-warn text-[10px] font-bold text-white flex items-center justify-center">
-                {resetCount > 9 ? '9+' : resetCount}
-              </span>
-            )}
-          </Link>
+          <PasswordResetBell />
           <button
             type="button"
             className="pf-btn-ghost !px-2"

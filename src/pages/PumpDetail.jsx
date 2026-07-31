@@ -93,6 +93,8 @@ export default function PumpDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   const isInformationView = /\/information\/?$/.test(location.pathname)
+  const isSetupView = /\/setup\/?$/.test(location.pathname)
+  const isDataView = !isInformationView && !isSetupView
   const [pump, setPump] = useState(null)
   const [users, setUsers] = useState([])
   const [sales, setSales] = useState([])
@@ -299,10 +301,10 @@ export default function PumpDetail() {
   }, [isSupportAdmin, activeTab])
 
   useEffect(() => {
-    if (pump && !pump.is_active && activeTab === 'setup') {
-      setActiveTab('details')
+    if (pump && !pump.is_active && isSetupView) {
+      navigate(`/pumps/${id}/information`, { replace: true })
     }
-  }, [pump, activeTab])
+  }, [pump, isSetupView, id, navigate])
 
   useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
@@ -1169,9 +1171,15 @@ export default function PumpDetail() {
     { id: 'details', label: 'Overview', icon: Building2 },
     ...(isSupportAdmin ? [{ id: 'subscription', label: 'Subscription', icon: DollarSign }] : []),
     { id: 'management', label: 'Management', icon: Settings },
-    ...(pump.is_active ? [{ id: 'setup', label: 'Setup', icon: ClipboardList }] : []),
     ...(isSupportAdmin ? [{ id: 'actions', label: 'Actions', icon: AlertTriangle }] : []),
   ]
+
+  const sectionTabClass = ({ isActive }) =>
+    `flex-1 sm:flex-none inline-flex items-center justify-center h-9 sm:h-8 px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
+      isActive
+        ? 'bg-surface text-ink shadow-soft'
+        : 'text-ink-secondary hover:text-ink'
+    }`
 
   return (
     <>
@@ -1239,36 +1247,22 @@ export default function PumpDetail() {
             role="navigation"
             aria-label="Pump sections"
           >
-            <NavLink
-              to={`/pumps/${id}`}
-              end
-              className={({ isActive }) =>
-                `flex-1 sm:flex-none inline-flex items-center justify-center h-9 sm:h-8 px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
-                  isActive
-                    ? 'bg-surface text-ink shadow-soft'
-                    : 'text-ink-secondary hover:text-ink'
-                }`
-              }
-            >
+            <NavLink to={`/pumps/${id}`} end className={sectionTabClass}>
               Pump Data
             </NavLink>
-            <NavLink
-              to={`/pumps/${id}/information`}
-              className={({ isActive }) =>
-                `flex-1 sm:flex-none inline-flex items-center justify-center h-9 sm:h-8 px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
-                  isActive
-                    ? 'bg-surface text-ink shadow-soft'
-                    : 'text-ink-secondary hover:text-ink'
-                }`
-              }
-            >
+            <NavLink to={`/pumps/${id}/information`} className={sectionTabClass}>
               Pump Information
             </NavLink>
+            {pump.is_active && (
+              <NavLink to={`/pumps/${id}/setup`} className={sectionTabClass}>
+                Pump Setup
+              </NavLink>
+            )}
           </div>
         </div>
       </div>
 
-      {!isInformationView && (
+      {isDataView && (
       <div className="animate-fade-in">
           <div className="pf-card overflow-hidden">
             <div className="pf-card-header !py-3.5">
@@ -2520,7 +2514,7 @@ export default function PumpDetail() {
             <div className="pf-card-header !py-3.5">
               <div>
                 <h2 className="pf-section-title">Pump information</h2>
-                <p className="pf-meta mt-0.5">Profile, subscription, management, and setup</p>
+                <p className="pf-meta mt-0.5">Profile, subscription, and administrative controls</p>
               </div>
             </div>
 
@@ -2781,16 +2775,6 @@ export default function PumpDetail() {
                 </div>
               )}
 
-              {/* Setup Tab — active pumps only */}
-              {activeTab === 'setup' && pump.is_active && (
-                <PumpSignupSetup
-                  pumpName={pump.name}
-                  onLocalSave={(draft) => {
-                    console.log('Pump signup draft (local only):', draft)
-                  }}
-                />
-              )}
-
               {/* Management Tab */}
               {activeTab === 'management' && (
               <div className="space-y-6">
@@ -3027,6 +3011,27 @@ export default function PumpDetail() {
                 </div>
               </div>
             )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSetupView && pump.is_active && (
+        <div className="animate-fade-in">
+          <div className="pf-card overflow-hidden">
+            <div className="pf-card-header !py-3.5">
+              <div>
+                <h2 className="pf-section-title">Pump setup</h2>
+                <p className="pf-meta mt-0.5">Signup and configuration wizard for this pump</p>
+              </div>
+            </div>
+            <div className="p-4 sm:p-5 lg:p-6">
+              <PumpSignupSetup
+                pumpName={pump.name}
+                onLocalSave={(draft) => {
+                  console.log('Pump signup draft (local only):', draft)
+                }}
+              />
             </div>
           </div>
         </div>

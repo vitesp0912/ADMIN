@@ -56,6 +56,7 @@ function App() {
           <Route path="pumps" element={<Pumps />} />
           <Route path="pumps/:id" element={<PumpDetail />} />
           <Route path="pumps/:id/information" element={<PumpDetail />} />
+          <Route path="pumps/:id/setup" element={<PumpDetail />} />
           <Route path="users" element={<Users />} />
           <Route path="sales" element={<Sales />} />
           <Route path="expenses" element={<Expenses />} />
