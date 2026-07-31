@@ -1175,23 +1175,23 @@ export default function PumpDetail() {
 
   return (
     <>
-    <div className="pf-page space-y-4">
-      {/* Compact page chrome — switcher on the right */}
-      <div className="pf-card px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+    <div className="pf-page space-y-3 sm:space-y-4 min-w-0 overflow-x-hidden">
+      {/* Page chrome — stacks on mobile, row on desktop */}
+      <div className="pf-card px-3 py-3 sm:px-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
             <Link
               to="/pumps"
-              className="pf-btn-ghost !px-2 shrink-0"
+              className="pf-btn-ghost !px-2 !h-9 shrink-0 mt-0.5"
               aria-label="Back to pumps"
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[18px] sm:text-[20px] font-semibold tracking-tight text-ink truncate leading-none">
-                  {pump.name}
-                </h1>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[17px] sm:text-[20px] font-semibold tracking-tight text-ink break-words leading-snug">
+                {pump.name}
+              </h1>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 <StatusPill tone={pump.is_active ? 'ok' : 'neutral'}>
                   {pump.is_active ? 'Active' : 'Inactive'}
                 </StatusPill>
@@ -1206,11 +1206,9 @@ export default function PumpDetail() {
                 >
                   {pump.registration_status || 'N/A'}
                 </StatusPill>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-[12px] text-ink-secondary">
-                <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span className="font-mono text-ink">{pump.pump_code || 'N/A'}</span>
+                <span className="inline-flex items-center gap-1 text-[11px] text-ink-secondary font-mono">
+                  <Building2 className="w-3 h-3 shrink-0" />
+                  {pump.pump_code || 'N/A'}
                 </span>
                 {phoneToTel(pump.phone) && (
                   <a
@@ -1237,7 +1235,7 @@ export default function PumpDetail() {
           </div>
 
           <div
-            className="inline-flex items-center p-0.5 rounded-control border border-line bg-surface-muted shrink-0"
+            className="flex w-full sm:w-auto sm:shrink-0 p-0.5 rounded-control border border-line bg-surface-muted"
             role="navigation"
             aria-label="Pump sections"
           >
@@ -1245,7 +1243,7 @@ export default function PumpDetail() {
               to={`/pumps/${id}`}
               end
               className={({ isActive }) =>
-                `inline-flex items-center justify-center h-8 px-3.5 rounded-[6px] text-[13px] font-semibold leading-none transition-colors duration-100 ${
+                `flex-1 sm:flex-none inline-flex items-center justify-center h-9 sm:h-8 px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
                   isActive
                     ? 'bg-surface text-ink shadow-soft'
                     : 'text-ink-secondary hover:text-ink'
@@ -1257,7 +1255,7 @@ export default function PumpDetail() {
             <NavLink
               to={`/pumps/${id}/information`}
               className={({ isActive }) =>
-                `inline-flex items-center justify-center h-8 px-3.5 rounded-[6px] text-[13px] font-semibold leading-none transition-colors duration-100 ${
+                `flex-1 sm:flex-none inline-flex items-center justify-center h-9 sm:h-8 px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
                   isActive
                     ? 'bg-surface text-ink shadow-soft'
                     : 'text-ink-secondary hover:text-ink'

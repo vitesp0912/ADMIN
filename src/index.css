@@ -216,15 +216,19 @@
   }
 
   .pf-stat-cell {
-    @apply px-4 py-3.5 sm:px-5 bg-surface;
+    @apply px-3 py-3 sm:px-5 sm:py-3.5 bg-surface min-w-0;
+  }
+
+  .pf-stat-cell .pf-label {
+    @apply truncate;
   }
 
   .pf-module-nav {
-    @apply flex gap-1 px-3 py-2.5 min-w-max;
+    @apply flex gap-1 px-2 sm:px-3 py-2 min-w-max;
   }
 
   .pf-module-tab {
-    @apply h-8 px-3 rounded-control text-[12px] font-semibold whitespace-nowrap
+    @apply h-8 px-2.5 sm:px-3 rounded-control text-[11px] sm:text-[12px] font-semibold whitespace-nowrap
       text-ink-secondary transition-colors duration-100 inline-flex items-center gap-1.5;
   }
 

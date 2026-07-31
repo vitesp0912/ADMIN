@@ -163,31 +163,31 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-canvas">
       <header className="lg:hidden sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur-sm">
-        <div className="h-14 px-4 flex items-center justify-between gap-3">
+        <div className="h-14 px-3 flex items-center gap-2">
           <button
             type="button"
-            className="pf-btn-ghost !px-2"
+            className="pf-btn-ghost !px-2 shrink-0"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open navigation"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="min-w-0 flex items-center gap-2.5">
+          <div className="min-w-0 flex-1 flex items-center gap-2">
             <img
               src="/app_icon.png"
               alt=""
-              className="w-8 h-8 object-contain shrink-0"
-              width={32}
-              height={32}
+              className="w-7 h-7 object-contain shrink-0"
+              width={28}
+              height={28}
             />
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-ink truncate">PetroFI</p>
-              <p className="text-[11px] text-ink-muted truncate">{pageTitle}</p>
+              <p className="text-[13px] font-semibold text-ink truncate leading-tight">PetroFI</p>
+              <p className="text-[11px] text-ink-muted truncate leading-tight">{pageTitle}</p>
             </div>
           </div>
           <button
             type="button"
-            className="pf-btn-ghost !px-2"
+            className="pf-btn-ghost !px-2 shrink-0"
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
             aria-label="Toggle theme"
           >
@@ -294,9 +294,9 @@ export default function Layout() {
         </header>
 
         <main
-          className={`flex-1 w-full mx-auto ${
+          className={`flex-1 w-full mx-auto min-w-0 overflow-x-hidden ${
             location.pathname.startsWith('/pumps/')
-              ? 'p-3 sm:p-5 lg:p-6 max-w-none'
+              ? 'p-2.5 sm:p-5 lg:p-6 max-w-none'
               : 'p-4 sm:p-6 lg:p-8 max-w-[1440px]'
           }`}
         >
