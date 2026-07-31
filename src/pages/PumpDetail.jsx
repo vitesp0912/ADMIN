@@ -301,12 +301,6 @@ export default function PumpDetail() {
   }, [isSupportAdmin, activeTab])
 
   useEffect(() => {
-    if (pump && !pump.is_active && isSetupView) {
-      navigate(`/pumps/${id}/information`, { replace: true })
-    }
-  }, [pump, isSetupView, id, navigate])
-
-  useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
       fetchTabData(activeDataTab)
     }
@@ -1253,11 +1247,9 @@ export default function PumpDetail() {
             <NavLink to={`/pumps/${id}/information`} className={sectionTabClass}>
               Pump Information
             </NavLink>
-            {pump.is_active && (
-              <NavLink to={`/pumps/${id}/setup`} className={sectionTabClass}>
-                Pump Setup
-              </NavLink>
-            )}
+            <NavLink to={`/pumps/${id}/setup`} className={sectionTabClass}>
+              Pump Setup
+            </NavLink>
           </div>
         </div>
       </div>
@@ -3016,14 +3008,9 @@ export default function PumpDetail() {
         </div>
       )}
 
-      {isSetupView && pump.is_active && (
+      {isSetupView && (
         <div className="animate-fade-in">
-          <PumpSignupSetup
-            pumpName={pump.name}
-            onLocalSave={(draft) => {
-              console.log('Pump signup draft (local only):', draft)
-            }}
-          />
+          <PumpSignupSetup pumpId={pump.id} pumpName={pump.name} />
         </div>
       )}
     </div>
