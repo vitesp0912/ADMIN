@@ -3018,22 +3018,12 @@ export default function PumpDetail() {
 
       {isSetupView && pump.is_active && (
         <div className="animate-fade-in">
-          <div className="pf-card overflow-hidden">
-            <div className="pf-card-header !py-3.5">
-              <div>
-                <h2 className="pf-section-title">Pump setup</h2>
-                <p className="pf-meta mt-0.5">Signup and configuration wizard for this pump</p>
-              </div>
-            </div>
-            <div className="p-4 sm:p-5 lg:p-6">
-              <PumpSignupSetup
-                pumpName={pump.name}
-                onLocalSave={(draft) => {
-                  console.log('Pump signup draft (local only):', draft)
-                }}
-              />
-            </div>
-          </div>
+          <PumpSignupSetup
+            pumpName={pump.name}
+            onLocalSave={(draft) => {
+              console.log('Pump signup draft (local only):', draft)
+            }}
+          />
         </div>
       )}
     </div>
