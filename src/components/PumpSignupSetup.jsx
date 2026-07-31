@@ -163,15 +163,11 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
           .order('sequence', { ascending: true }),
         db
           .from('nozzle_info')
-          .select(
-            'pump_id, nozzle_id, name, nozzle_number, fuel_type, fuel_type_id, initial_meter_reading, is_active'
-          )
-          .eq('pump_id', pumpId)
-          .eq('is_active', true)
-          .order('nozzle_number', { ascending: true }),
+          .select('nozzle_id, name, nozzle_number, fuel_type')
+          .eq('pump_id', pumpId),
         db
           .from('nozzle_reading')
-          .select('nozzle_id, date, shift_id, opening_reading, created_at')
+          .select('id, nozzle_id, date, shift_id, fuel_type_id, opening_reading, created_at')
           .eq('pump_id', pumpId)
           .order('date', { ascending: true })
           .order('created_at', { ascending: true }),
@@ -182,20 +178,6 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
       if (nozzleRes.error) throw nozzleRes.error
       if (readingRes.error) throw readingRes.error
 
-      const activeNozzles = nozzleRes.data || []
-      const activeNozzleIds = new Set(activeNozzles.map((n) => n.nozzle_id))
-
-      // Only attach readings that still belong to an active nozzle_info row.
-      // Saving nozzles writes BOTH nozzle_info and a baseline nozzle_reading;
-      // deleting one table alone can leave the other looking "stuck".
-      const earliestReadingByNozzle = {}
-      ;(readingRes.data || []).forEach((row) => {
-        if (!activeNozzleIds.has(row.nozzle_id)) return
-        if (!earliestReadingByNozzle[row.nozzle_id]) {
-          earliestReadingByNozzle[row.nozzle_id] = row
-        }
-      })
-
       const fuelMap = {}
       ;(fuelRes.data || []).forEach((f) => {
         fuelMap[f.id] = f
@@ -203,6 +185,19 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
       const shiftMap = {}
       ;(shiftRes.data || []).forEach((s) => {
         shiftMap[s.id] = s
+      })
+      const nozzleInfoMap = {}
+      ;(nozzleRes.data || []).forEach((n) => {
+        nozzleInfoMap[n.nozzle_id] = n
+      })
+
+      // Nozzle configuration view is driven only by nozzle_reading.
+      // One row per nozzle (earliest reading = onboarding baseline).
+      const earliestByNozzle = {}
+      ;(readingRes.data || []).forEach((row) => {
+        if (!earliestByNozzle[row.nozzle_id]) {
+          earliestByNozzle[row.nozzle_id] = row
+        }
       })
 
       const nextFuels = fuelRes.data || []
@@ -213,15 +208,19 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
       setFuelTypes(nextFuels)
       setShifts(nextShifts)
       setNozzles(
-        activeNozzles.map((n) => {
-          const reading = earliestReadingByNozzle[n.nozzle_id]
-          const fuel = n.fuel_type_id ? fuelMap[n.fuel_type_id] : null
-          const shift = reading?.shift_id ? shiftMap[reading.shift_id] : null
+        Object.values(earliestByNozzle).map((reading, index) => {
+          const info = nozzleInfoMap[reading.nozzle_id]
+          const fuel = reading.fuel_type_id ? fuelMap[reading.fuel_type_id] : null
+          const shift = reading.shift_id ? shiftMap[reading.shift_id] : null
           return {
-            ...n,
-            fuelName: fuel?.name || n.fuel_type || '—',
-            readingDate: reading?.date || null,
-            readingShiftId: reading?.shift_id || null,
+            readingId: reading.id,
+            nozzle_id: reading.nozzle_id,
+            name: info?.name || null,
+            nozzle_number: info?.nozzle_number ?? index + 1,
+            fuelName: fuel?.name || info?.fuel_type || '—',
+            initial_meter_reading: reading.opening_reading,
+            readingDate: reading.date || null,
+            readingShiftId: reading.shift_id || null,
             readingShiftLabel: shift ? shift.name || `Shift ${shift.sequence}` : '—',
           }
         })
@@ -758,7 +757,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
         <div className="space-y-3">
           {nozzleBlockedNotice}
           <EmptyState
-            title="No nozzles yet"
+            title="No nozzle readings yet"
             description={
               canConfigureNozzles
                 ? `Add nozzle configuration for ${pumpName || 'this pump'} to complete signup.`
@@ -789,14 +788,14 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium">Nozzle</th>
                 <th className="px-3 py-2.5 text-left font-medium">Fuel type</th>
-                <th className="px-3 py-2.5 text-right font-medium">Initial reading</th>
+                <th className="px-3 py-2.5 text-right font-medium">Opening reading</th>
                 <th className="px-3 py-2.5 text-left font-medium">Date</th>
                 <th className="px-3 py-2.5 text-left font-medium">Shift</th>
               </tr>
             </thead>
             <tbody>
               {nozzles.map((row) => (
-                <tr key={row.nozzle_id} className="border-t border-line">
+                <tr key={row.readingId || row.nozzle_id} className="border-t border-line">
                   <td className="px-3 py-2.5 font-medium text-ink">
                     {row.name ||
                       (row.nozzle_number != null ? `N${row.nozzle_number}` : row.nozzle_id?.slice(0, 8))}
