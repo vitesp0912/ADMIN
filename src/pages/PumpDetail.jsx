@@ -252,6 +252,7 @@ export default function PumpDetail() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deletingPump, setDeletingPump] = useState(false)
   const [isSupportAdmin, setIsSupportAdmin] = useState(false)
+  const [supportCheckDone, setSupportCheckDone] = useState(false)
 
   const [tanks, setTanks] = useState([])
   const [fuelReceipts, setFuelReceipts] = useState([])
@@ -288,6 +289,7 @@ export default function PumpDetail() {
       const { data: { user } } = await supabase.auth.getUser()
       if (cancelled) return
       setIsSupportAdmin(isSupportAdminEmail(user?.email))
+      setSupportCheckDone(true)
     })()
     return () => {
       cancelled = true
@@ -299,6 +301,11 @@ export default function PumpDetail() {
       setActiveTab('details')
     }
   }, [isSupportAdmin, activeTab])
+
+  useEffect(() => {
+    if (!supportCheckDone || isSupportAdmin || !isSetupView) return
+    navigate(`/pumps/${id}/information`, { replace: true })
+  }, [supportCheckDone, isSupportAdmin, isSetupView, id, navigate])
 
   useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
@@ -1247,9 +1254,11 @@ export default function PumpDetail() {
             <NavLink to={`/pumps/${id}/information`} className={sectionTabClass}>
               Pump Information
             </NavLink>
-            <NavLink to={`/pumps/${id}/setup`} className={sectionTabClass}>
-              Pump Setup
-            </NavLink>
+            {isSupportAdmin && (
+              <NavLink to={`/pumps/${id}/setup`} className={sectionTabClass}>
+                Pump Setup
+              </NavLink>
+            )}
           </div>
         </div>
       </div>
@@ -3008,7 +3017,7 @@ export default function PumpDetail() {
         </div>
       )}
 
-      {isSetupView && (
+      {isSetupView && isSupportAdmin && (
         <div className="animate-fade-in">
           <PumpSignupSetup pumpId={pump.id} pumpName={pump.name} />
         </div>

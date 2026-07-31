@@ -1,9 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Clock, Fuel, Gauge, Plus, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { AlertTriangle, Clock, Fuel, Gauge, Loader2, Plus, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { hasAdminServiceRole, requireAdminClient } from '../lib/adminSupabase'
+import {
+  ALLOWED_FUEL_TYPE_NAMES,
+  FUEL_COUNT_MAX,
+  NOZZLE_COUNT_MAX,
+  SHIFT_COUNT_MAX,
+  adminSaveFuelTypes,
+  adminSaveNozzles,
+  adminSyncPumpShifts,
+  normalizeShiftDraft,
+  validateFuelDraft,
+  validateNozzleDraft,
+  validateShiftDraft,
+} from '../lib/adminOnboarding'
 import EmptyState from './ui/EmptyState'
-
-const MAX_COUNT = 12
 
 const SETUP_TABS = [
   {
@@ -43,15 +55,12 @@ const emptyShift = (sequence = 1) => ({
 
 const emptyNozzle = () => ({
   id: crypto.randomUUID(),
-  name: '',
   fuelTypeId: '',
-  initialReading: '',
-  date: '',
-  shiftId: '',
+  initialReading: '0',
 })
 
 const resizeList = (list, count, createItem) => {
-  const n = Math.max(0, Math.min(MAX_COUNT, Number(count) || 0))
+  const n = Math.max(0, Number(count) || 0)
   if (list.length === n) return list
   if (list.length < n) {
     const next = [...list]
@@ -95,6 +104,11 @@ const formatDate = (value) => {
   }
 }
 
+const todayInputValue = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function PumpSignupSetup({ pumpId, pumpName }) {
   const [activeTab, setActiveTab] = useState('fuel')
   const [loading, setLoading] = useState(true)
@@ -103,140 +117,152 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   const [shifts, setShifts] = useState([])
   const [nozzles, setNozzles] = useState([])
 
-  // null = view/empty, 'add' = local form only (no save; edit blocked when DB rows exist)
   const [panelMode, setPanelMode] = useState({ fuel: null, shifts: null, nozzles: null })
+  const [saving, setSaving] = useState(false)
+  const [formMessage, setFormMessage] = useState({ type: '', text: '' })
 
-  const [fuelCount, setFuelCount] = useState(1)
+  const [fuelCountInput, setFuelCountInput] = useState('1')
   const [fuelDraft, setFuelDraft] = useState([emptyFuelType()])
-  const [shiftCount, setShiftCount] = useState(1)
+  const [shiftCountInput, setShiftCountInput] = useState('1')
   const [shiftDraft, setShiftDraft] = useState([emptyShift(1)])
-  const [nozzleCount, setNozzleCount] = useState(1)
+  const [nozzleCountInput, setNozzleCountInput] = useState('1')
   const [nozzleDraft, setNozzleDraft] = useState([emptyNozzle()])
+  const [meterDate, setMeterDate] = useState(todayInputValue())
+  const [meterShiftId, setMeterShiftId] = useState('')
 
-  useEffect(() => {
+  const parseCountInput = (raw, max) => {
+    if (raw === '' || raw == null) return null
+    const n = parseInt(String(raw), 10)
+    if (!Number.isFinite(n) || n < 1) return null
+    return Math.min(n, max)
+  }
+
+  const fuelCount = parseCountInput(fuelCountInput, FUEL_COUNT_MAX)
+  const shiftCount = parseCountInput(shiftCountInput, SHIFT_COUNT_MAX)
+  const nozzleCount = parseCountInput(nozzleCountInput, NOZZLE_COUNT_MAX)
+
+  const loadSetup = useCallback(async () => {
     if (!pumpId) return
-    let cancelled = false
+    setLoading(true)
+    setError('')
+    try {
+      // Prefer service-role client so pending-pump rows are visible after admin writes
+      const db = hasAdminServiceRole ? requireAdminClient() : supabase
 
-    const load = async () => {
-      setLoading(true)
-      setError('')
-      try {
-        const [fuelRes, shiftRes, nozzleRes, readingRes] = await Promise.all([
-          supabase
-            .from('fuel_types')
-            .select('id, name, rsp, ro_price, is_active, display_order')
-            .eq('pump_id', pumpId)
-            .order('display_order', { ascending: true }),
-          supabase
-            .from('shifts')
-            .select('id, name, sequence, start_time, end_time, is_active')
-            .eq('pump_id', pumpId)
-            .order('sequence', { ascending: true }),
-          supabase
-            .from('nozzle_info')
-            .select(
-              'pump_id, nozzle_id, name, nozzle_number, fuel_type, fuel_type_id, initial_meter_reading, is_active'
-            )
-            .eq('pump_id', pumpId)
-            .order('nozzle_number', { ascending: true }),
-          supabase
-            .from('nozzle_reading')
-            .select('nozzle_id, date, shift_id, opening_reading, created_at')
-            .eq('pump_id', pumpId)
-            .order('date', { ascending: true })
-            .order('created_at', { ascending: true }),
-        ])
+      const [fuelRes, shiftRes, nozzleRes, readingRes] = await Promise.all([
+        db
+          .from('fuel_types')
+          .select('id, name, rsp, ro_price, is_active, display_order')
+          .eq('pump_id', pumpId)
+          .order('display_order', { ascending: true }),
+        db
+          .from('shifts')
+          .select('id, name, sequence, start_time, end_time, is_active')
+          .eq('pump_id', pumpId)
+          .eq('is_active', true)
+          .order('sequence', { ascending: true }),
+        db
+          .from('nozzle_info')
+          .select(
+            'pump_id, nozzle_id, name, nozzle_number, fuel_type, fuel_type_id, initial_meter_reading, is_active'
+          )
+          .eq('pump_id', pumpId)
+          .eq('is_active', true)
+          .order('nozzle_number', { ascending: true }),
+        db
+          .from('nozzle_reading')
+          .select('nozzle_id, date, shift_id, opening_reading, created_at')
+          .eq('pump_id', pumpId)
+          .order('date', { ascending: true })
+          .order('created_at', { ascending: true }),
+      ])
 
-        if (fuelRes.error) throw fuelRes.error
-        if (shiftRes.error) throw shiftRes.error
-        if (nozzleRes.error) throw nozzleRes.error
-        if (readingRes.error) throw readingRes.error
+      if (fuelRes.error) throw fuelRes.error
+      if (shiftRes.error) throw shiftRes.error
+      if (nozzleRes.error) throw nozzleRes.error
+      if (readingRes.error) throw readingRes.error
 
-        if (cancelled) return
+      const activeNozzles = nozzleRes.data || []
+      const activeNozzleIds = new Set(activeNozzles.map((n) => n.nozzle_id))
 
-        const earliestReadingByNozzle = {}
-        ;(readingRes.data || []).forEach((row) => {
-          if (!earliestReadingByNozzle[row.nozzle_id]) {
-            earliestReadingByNozzle[row.nozzle_id] = row
+      // Only attach readings that still belong to an active nozzle_info row.
+      // Saving nozzles writes BOTH nozzle_info and a baseline nozzle_reading;
+      // deleting one table alone can leave the other looking "stuck".
+      const earliestReadingByNozzle = {}
+      ;(readingRes.data || []).forEach((row) => {
+        if (!activeNozzleIds.has(row.nozzle_id)) return
+        if (!earliestReadingByNozzle[row.nozzle_id]) {
+          earliestReadingByNozzle[row.nozzle_id] = row
+        }
+      })
+
+      const fuelMap = {}
+      ;(fuelRes.data || []).forEach((f) => {
+        fuelMap[f.id] = f
+      })
+      const shiftMap = {}
+      ;(shiftRes.data || []).forEach((s) => {
+        shiftMap[s.id] = s
+      })
+
+      const nextFuels = fuelRes.data || []
+      // Hide leftover temp rows from older sync bug (__sync__<uuid>)
+      const nextShifts = (shiftRes.data || []).filter(
+        (s) => s?.name && !String(s.name).startsWith('__sync__')
+      )
+      setFuelTypes(nextFuels)
+      setShifts(nextShifts)
+      setNozzles(
+        activeNozzles.map((n) => {
+          const reading = earliestReadingByNozzle[n.nozzle_id]
+          const fuel = n.fuel_type_id ? fuelMap[n.fuel_type_id] : null
+          const shift = reading?.shift_id ? shiftMap[reading.shift_id] : null
+          return {
+            ...n,
+            fuelName: fuel?.name || n.fuel_type || '—',
+            readingDate: reading?.date || null,
+            readingShiftId: reading?.shift_id || null,
+            readingShiftLabel: shift ? shift.name || `Shift ${shift.sequence}` : '—',
           }
         })
-
-        const fuelMap = {}
-        ;(fuelRes.data || []).forEach((f) => {
-          fuelMap[f.id] = f
-        })
-        const shiftMap = {}
-        ;(shiftRes.data || []).forEach((s) => {
-          shiftMap[s.id] = s
-        })
-
-        setFuelTypes(fuelRes.data || [])
-        setShifts(shiftRes.data || [])
-        setNozzles(
-          (nozzleRes.data || []).map((n) => {
-            const reading = earliestReadingByNozzle[n.nozzle_id]
-            const fuel = n.fuel_type_id ? fuelMap[n.fuel_type_id] : null
-            const shift = reading?.shift_id ? shiftMap[reading.shift_id] : null
-            return {
-              ...n,
-              fuelName: fuel?.name || n.fuel_type || '—',
-              readingDate: reading?.date || null,
-              readingShiftId: reading?.shift_id || null,
-              readingShiftLabel: shift
-                ? shift.name || `Shift ${shift.sequence}`
-                : '—',
-            }
-          })
-        )
-        setPanelMode({ fuel: null, shifts: null, nozzles: null })
-      } catch (err) {
-        console.error('Pump setup fetch error:', err)
-        if (!cancelled) setError(err.message || 'Failed to load setup data')
-      } finally {
-        if (!cancelled) setLoading(false)
+      )
+      setPanelMode({ fuel: null, shifts: null, nozzles: null })
+      if (nextShifts.length > 0) {
+        setMeterShiftId((prev) => prev || nextShifts[0].id)
       }
-    }
-
-    load()
-    return () => {
-      cancelled = true
+    } catch (err) {
+      console.error('Pump setup fetch error:', err)
+      setError(err.message || 'Failed to load setup data')
+    } finally {
+      setLoading(false)
     }
   }, [pumpId])
 
   useEffect(() => {
+    loadSetup()
+  }, [loadSetup])
+
+  useEffect(() => {
+    if (fuelCount == null) return
     setFuelDraft((prev) => resizeList(prev, fuelCount, () => emptyFuelType()))
   }, [fuelCount])
 
   useEffect(() => {
+    if (shiftCount == null) return
     setShiftDraft((prev) =>
-      resizeList(prev, shiftCount, (seq) => emptyShift(seq)).map((s, i) => ({
-        ...s,
-        sequence: i + 1,
-      }))
+      normalizeShiftDraft(
+        resizeList(prev, shiftCount, (seq) => emptyShift(seq)).map((s, i) => ({
+          ...s,
+          sequence: i + 1,
+        }))
+      )
     )
   }, [shiftCount])
 
   useEffect(() => {
+    if (nozzleCount == null) return
     setNozzleDraft((prev) => resizeList(prev, nozzleCount, () => emptyNozzle()))
   }, [nozzleCount])
-
-  const fuelOptions = useMemo(
-    () =>
-      (panelMode.fuel ? fuelDraft : fuelTypes)
-        .filter((f) => (f.name || '').trim())
-        .map((f) => ({ id: f.id, name: (f.name || '').trim() })),
-    [panelMode.fuel, fuelDraft, fuelTypes]
-  )
-
-  const shiftOptions = useMemo(() => {
-    const source = panelMode.shifts ? shiftDraft : shifts
-    return source
-      .filter((s) => (s.name || '').trim() || s.startTime || s.start_time || s.endTime || s.end_time)
-      .map((s) => ({
-        id: s.id,
-        label: (s.name || '').trim() || `Shift ${s.sequence}`,
-      }))
-  }, [panelMode.shifts, shiftDraft, shifts])
 
   const canConfigureNozzles = fuelTypes.length > 0 && shifts.length > 0
 
@@ -256,19 +282,22 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
 
   const setMode = (tab, mode) => {
     setPanelMode((prev) => ({ ...prev, [tab]: mode }))
+    setFormMessage({ type: '', text: '' })
   }
 
   const openAdd = (tab) => {
     if (tab === 'nozzles' && !canConfigureNozzles) return
     if (tab === 'fuel') {
-      setFuelCount(1)
+      setFuelCountInput('1')
       setFuelDraft([emptyFuelType()])
     } else if (tab === 'shifts') {
-      setShiftCount(1)
+      setShiftCountInput('1')
       setShiftDraft([emptyShift(1)])
     } else {
-      setNozzleCount(1)
+      setNozzleCountInput('1')
       setNozzleDraft([emptyNozzle()])
+      setMeterDate(todayInputValue())
+      setMeterShiftId(shifts[0]?.id || '')
     }
     setMode(tab, 'add')
   }
@@ -280,31 +309,112 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   }
 
   const updateShift = (id, patch) => {
-    setShiftDraft((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+    setShiftDraft((prev) => {
+      const next = prev.map((row) => (row.id === id ? { ...row, ...patch } : row))
+      // Re-sequence + recompute ends when start times change
+      return Object.prototype.hasOwnProperty.call(patch, 'startTime')
+        ? normalizeShiftDraft(next)
+        : next
+    })
   }
 
   const updateNozzle = (id, patch) => {
     setNozzleDraft((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
   }
 
-  const countInput = (label, value, onChange) => (
+  const showMessage = (type, text) => {
+    setFormMessage({ type, text })
+  }
+
+  const handleSave = async (tab) => {
+    if (!pumpId) return
+    if (saveDisabledForTab(tab)) return
+    if (!hasAdminServiceRole) {
+      showMessage(
+        'error',
+        'Set VITE_SUPABASE_SERVICE_ROLE_KEY in .env — admin onboarding RPCs are service_role only.'
+      )
+      return
+    }
+
+    setSaving(true)
+    setFormMessage({ type: '', text: '' })
+    try {
+      if (tab === 'fuel') {
+        const validationError = validateFuelDraft(fuelDraft)
+        if (validationError) throw new Error(validationError)
+        await adminSaveFuelTypes(pumpId, fuelDraft)
+        showMessage('success', 'Fuel types saved.')
+      } else if (tab === 'shifts') {
+        const normalized = normalizeShiftDraft(shiftDraft)
+        setShiftDraft(normalized)
+        const validationError = validateShiftDraft(normalized)
+        if (validationError) throw new Error(validationError)
+        await adminSyncPumpShifts(pumpId, normalized)
+        showMessage('success', 'Shifts saved.')
+      } else {
+        const validationError = validateNozzleDraft({
+          rows: nozzleDraft,
+          meterDate,
+          shiftId: meterShiftId,
+        })
+        if (validationError) throw new Error(validationError)
+        await adminSaveNozzles(pumpId, {
+          rows: nozzleDraft,
+          meterDate,
+          shiftId: meterShiftId,
+        })
+        showMessage('success', 'Nozzles saved.')
+      }
+      await loadSetup()
+    } catch (err) {
+      console.error('Pump setup save error:', err)
+      showMessage('error', err.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCountInputChange = (raw, max, onChange) => {
+    const digits = String(raw).replace(/\D/g, '')
+    if (digits === '') {
+      onChange('')
+      return
+    }
+    const n = parseInt(digits, 10)
+    if (!Number.isFinite(n)) return
+    if (n > max) {
+      onChange(String(max))
+      return
+    }
+    onChange(digits)
+  }
+
+  const countInput = (label, value, onChange, max) => (
     <label className="block">
       <span className="text-[13px] font-semibold text-ink">{label}</span>
       <input
-        type="number"
-        min={0}
-        max={MAX_COUNT}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
         value={value}
-        onChange={(e) =>
-          onChange(Math.max(0, Math.min(MAX_COUNT, parseInt(e.target.value, 10) || 0)))
-        }
-        className="mt-2 w-full sm:w-32 px-3 py-2 border border-line-strong rounded-lg bg-surface text-ink focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+        onChange={(e) => handleCountInputChange(e.target.value, max, onChange)}
+        className="mt-2 w-full sm:w-36 px-3.5 py-2.5 border border-line-strong rounded-lg bg-surface text-ink focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
       />
+      <span className="block text-[11px] text-ink-muted mt-1.5">Max {max}</span>
     </label>
   )
 
+  const saveDisabledForTab = (tab) => {
+    if (saving) return true
+    if (tab === 'fuel') return fuelCount == null
+    if (tab === 'shifts') return shiftCount == null
+    if (tab === 'nozzles') return nozzleCount == null
+    return false
+  }
+
   const fieldClass =
-    'w-full px-3 py-2 border border-line-strong rounded-lg text-sm bg-surface text-ink focus:ring-2 focus:ring-brand-500 focus:border-brand-500'
+    'w-full px-3.5 py-2.5 border border-line-strong rounded-lg text-sm bg-surface text-ink focus:ring-2 focus:ring-brand-500 focus:border-brand-500'
 
   const tabButtonClass = (id) =>
     `flex flex-col items-start gap-1 rounded-lg border px-3.5 py-3 text-left transition-colors ${
@@ -313,71 +423,109 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
         : 'border-line bg-surface hover:bg-surface-muted text-ink'
     }`
 
-  const formFooter = (tab) => (
-    <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 pt-1">
-      <button type="button" onClick={() => closeForm(tab)} className="pf-btn-secondary">
-        <X className="w-4 h-4" />
-        Cancel
-      </button>
-      <button
-        type="button"
-        disabled
-        title="Save is not wired yet"
-        className="pf-btn-primary opacity-50 cursor-not-allowed"
-      >
-        Save
-      </button>
+  const messageBanner = formMessage.text && (
+    <div
+      className={`p-3 rounded-lg border text-sm font-medium ${
+        formMessage.type === 'success'
+          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800'
+          : 'bg-red-50 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-800'
+      }`}
+    >
+      {formMessage.text}
     </div>
   )
 
+  const formFooter = (tab) => {
+    const saveDisabled = saveDisabledForTab(tab)
+    return (
+      <div className="space-y-4 pt-2">
+        {messageBanner}
+        {!hasAdminServiceRole && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p>
+              Add <code className="font-mono">VITE_SUPABASE_SERVICE_ROLE_KEY</code> to your local{' '}
+              <code className="font-mono">.env</code> to enable saves (admin RPCs are service_role
+              only).
+            </p>
+          </div>
+        )}
+        <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => closeForm(tab)}
+            disabled={saving}
+            className="pf-btn-secondary"
+          >
+            <X className="w-4 h-4" />
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave(tab)}
+            disabled={saveDisabled}
+            className={`pf-btn-primary ${saveDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const renderFuelForm = () => (
-    <div className="space-y-4 rounded-lg border border-line bg-surface-muted/40 p-4">
+    <div className="space-y-5 rounded-lg border border-line bg-surface-muted/40 p-5 sm:p-6">
       <div>
         <h3 className="text-[14px] font-semibold text-ink">Add fuel types</h3>
-        <p className="text-[12px] text-ink-muted mt-0.5">
-          Local form only — nothing is written to the database yet.
-        </p>
       </div>
-      {countInput('Number of fuel types', fuelCount, setFuelCount)}
-      <div className="space-y-3">
+      {countInput('Number of fuel types', fuelCountInput, setFuelCountInput, FUEL_COUNT_MAX)}
+      <div className="space-y-4">
         {fuelDraft.map((row, index) => (
-          <div key={row.id} className="rounded-lg border border-line bg-surface p-3 space-y-3">
+          <div key={row.id} className="rounded-lg border border-line bg-surface p-4 space-y-3.5">
             <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
               Fuel type {index + 1}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <label className="block">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <label className="block sm:col-span-1">
                 <span className="text-xs font-medium text-ink-secondary">Name</span>
-                <input
-                  type="text"
+                <select
                   value={row.name}
                   onChange={(e) => updateFuel(row.id, { name: e.target.value })}
-                  placeholder="e.g. Petrol"
-                  className={`${fieldClass} mt-1`}
-                />
+                  className={`${fieldClass} mt-1.5`}
+                >
+                  <option value="">Select fuel type</option>
+                  {ALLOWED_FUEL_TYPE_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="block">
-                <span className="text-xs font-medium text-ink-secondary">RSP rate</span>
+                <span className="text-xs font-medium text-ink-secondary">RSP</span>
                 <input
                   type="number"
                   step="0.01"
-                  min="0"
+                  min="0.01"
+                  max="200"
                   value={row.rspRate}
                   onChange={(e) => updateFuel(row.id, { rspRate: e.target.value })}
                   placeholder="0.00"
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-1.5`}
                 />
               </label>
               <label className="block">
-                <span className="text-xs font-medium text-ink-secondary">RO rate</span>
+                <span className="text-xs font-medium text-ink-secondary">RO price</span>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
+                  max="200"
                   value={row.roRate}
                   onChange={(e) => updateFuel(row.id, { roRate: e.target.value })}
                   placeholder="0.00"
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-1.5`}
                 />
               </label>
             </div>
@@ -389,21 +537,18 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   )
 
   const renderShiftsForm = () => (
-    <div className="space-y-4 rounded-lg border border-line bg-surface-muted/40 p-4">
+    <div className="space-y-5 rounded-lg border border-line bg-surface-muted/40 p-5 sm:p-6">
       <div>
         <h3 className="text-[14px] font-semibold text-ink">Add shifts</h3>
-        <p className="text-[12px] text-ink-muted mt-0.5">
-          Local form only — nothing is written to the database yet.
-        </p>
       </div>
-      {countInput('Number of shifts', shiftCount, setShiftCount)}
-      <div className="space-y-3">
+      {countInput('Number of shifts', shiftCountInput, setShiftCountInput, SHIFT_COUNT_MAX)}
+      <div className="space-y-4">
         {shiftDraft.map((row) => (
-          <div key={row.id} className="rounded-lg border border-line bg-surface p-3 space-y-3">
+          <div key={row.id} className="rounded-lg border border-line bg-surface p-4 space-y-3.5">
             <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
               Shift {row.sequence}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label className="block">
                 <span className="text-xs font-medium text-ink-secondary">Name</span>
                 <input
@@ -411,7 +556,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
                   value={row.name}
                   onChange={(e) => updateShift(row.id, { name: e.target.value })}
                   placeholder="e.g. Morning"
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-1.5`}
                 />
               </label>
               <label className="block">
@@ -420,16 +565,19 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
                   type="time"
                   value={row.startTime}
                   onChange={(e) => updateShift(row.id, { startTime: e.target.value })}
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-1.5`}
                 />
               </label>
               <label className="block">
-                <span className="text-xs font-medium text-ink-secondary">End time</span>
+                <span className="text-xs font-medium text-ink-secondary">
+                  End time <span className="text-ink-muted font-normal">(auto)</span>
+                </span>
                 <input
                   type="time"
                   value={row.endTime}
-                  onChange={(e) => updateShift(row.id, { endTime: e.target.value })}
-                  className={`${fieldClass} mt-1`}
+                  readOnly
+                  className={`${fieldClass} mt-1.5 bg-surface-muted cursor-default`}
+                  title="Filled automatically so shifts cover 24 hours"
                 />
               </label>
             </div>
@@ -441,40 +589,54 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   )
 
   const renderNozzlesForm = () => (
-    <div className="space-y-4 rounded-lg border border-line bg-surface-muted/40 p-4">
+    <div className="space-y-5 rounded-lg border border-line bg-surface-muted/40 p-5 sm:p-6">
       <div>
         <h3 className="text-[14px] font-semibold text-ink">Add nozzles</h3>
-        <p className="text-[12px] text-ink-muted mt-0.5">
-          Local form only — nothing is written to the database yet.
-        </p>
       </div>
-      {countInput('Number of nozzles', nozzleCount, setNozzleCount)}
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label className="block">
+          <span className="text-xs font-medium text-ink-secondary">Meter start date</span>
+          <input
+            type="date"
+            value={meterDate}
+            max={todayInputValue()}
+            onChange={(e) => setMeterDate(e.target.value)}
+            className={`${fieldClass} mt-1.5`}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-ink-secondary">Shift</span>
+          <select
+            value={meterShiftId}
+            onChange={(e) => setMeterShiftId(e.target.value)}
+            className={`${fieldClass} mt-1.5`}
+          >
+            <option value="">Select shift</option>
+            {shifts.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name || `Shift ${s.sequence}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {countInput('Number of nozzles', nozzleCountInput, setNozzleCountInput, NOZZLE_COUNT_MAX)}
+      <div className="space-y-4">
         {nozzleDraft.map((row, index) => (
-          <div key={row.id} className="rounded-lg border border-line bg-surface p-3 space-y-3">
+          <div key={row.id} className="rounded-lg border border-line bg-surface p-4 space-y-3.5">
             <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
               Nozzle {index + 1}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs font-medium text-ink-secondary">Nozzle name</span>
-                <input
-                  type="text"
-                  value={row.name}
-                  onChange={(e) => updateNozzle(row.id, { name: e.target.value })}
-                  placeholder="e.g. N1"
-                  className={`${fieldClass} mt-1`}
-                />
-              </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-xs font-medium text-ink-secondary">Fuel type</span>
                 <select
                   value={row.fuelTypeId}
                   onChange={(e) => updateNozzle(row.id, { fuelTypeId: e.target.value })}
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-1.5`}
                 >
                   <option value="">Select fuel type</option>
-                  {fuelOptions.map((f) => (
+                  {fuelTypes.map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.name}
                     </option>
@@ -490,32 +652,8 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
                   value={row.initialReading}
                   onChange={(e) => updateNozzle(row.id, { initialReading: e.target.value })}
                   placeholder="0.00"
-                  className={`${fieldClass} mt-1`}
+                  className={`${fieldClass} mt-1.5`}
                 />
-              </label>
-              <label className="block">
-                <span className="text-xs font-medium text-ink-secondary">Date</span>
-                <input
-                  type="date"
-                  value={row.date}
-                  onChange={(e) => updateNozzle(row.id, { date: e.target.value })}
-                  className={`${fieldClass} mt-1`}
-                />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-xs font-medium text-ink-secondary">Shift</span>
-                <select
-                  value={row.shiftId}
-                  onChange={(e) => updateNozzle(row.id, { shiftId: e.target.value })}
-                  className={`${fieldClass} mt-1`}
-                >
-                  <option value="">Select shift</option>
-                  {shiftOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
               </label>
             </div>
           </div>
@@ -542,27 +680,25 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     }
 
     return (
-      <div className="space-y-4">
-        <div className="overflow-x-auto rounded-lg border border-line">
-          <table className="min-w-full text-[13px]">
-            <thead className="bg-surface-muted text-ink-secondary">
-              <tr>
-                <th className="px-3 py-2.5 text-left font-medium">Name</th>
-                <th className="px-3 py-2.5 text-right font-medium">RSP</th>
-                <th className="px-3 py-2.5 text-right font-medium">RO price</th>
+      <div className="overflow-x-auto rounded-lg border border-line">
+        <table className="min-w-full text-[13px]">
+          <thead className="bg-surface-muted text-ink-secondary">
+            <tr>
+              <th className="px-3 py-2.5 text-left font-medium">Name</th>
+              <th className="px-3 py-2.5 text-right font-medium">RSP</th>
+              <th className="px-3 py-2.5 text-right font-medium">RO price</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fuelTypes.map((row) => (
+              <tr key={row.id} className="border-t border-line">
+                <td className="px-3 py-2.5 font-medium text-ink">{row.name || '—'}</td>
+                <td className="px-3 py-2.5 text-right text-ink">{formatMoney(row.rsp)}</td>
+                <td className="px-3 py-2.5 text-right text-ink">{formatMoney(row.ro_price)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {fuelTypes.map((row) => (
-                <tr key={row.id} className="border-t border-line">
-                  <td className="px-3 py-2.5 font-medium text-ink">{row.name || '—'}</td>
-                  <td className="px-3 py-2.5 text-right text-ink">{formatMoney(row.rsp)}</td>
-                  <td className="px-3 py-2.5 text-right text-ink">{formatMoney(row.ro_price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     )
   }
@@ -584,29 +720,27 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     }
 
     return (
-      <div className="space-y-4">
-        <div className="overflow-x-auto rounded-lg border border-line">
-          <table className="min-w-full text-[13px]">
-            <thead className="bg-surface-muted text-ink-secondary">
-              <tr>
-                <th className="px-3 py-2.5 text-left font-medium">Sequence</th>
-                <th className="px-3 py-2.5 text-left font-medium">Name</th>
-                <th className="px-3 py-2.5 text-left font-medium">Start</th>
-                <th className="px-3 py-2.5 text-left font-medium">End</th>
+      <div className="overflow-x-auto rounded-lg border border-line">
+        <table className="min-w-full text-[13px]">
+          <thead className="bg-surface-muted text-ink-secondary">
+            <tr>
+              <th className="px-3 py-2.5 text-left font-medium">Sequence</th>
+              <th className="px-3 py-2.5 text-left font-medium">Name</th>
+              <th className="px-3 py-2.5 text-left font-medium">Start</th>
+              <th className="px-3 py-2.5 text-left font-medium">End</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shifts.map((row) => (
+              <tr key={row.id} className="border-t border-line">
+                <td className="px-3 py-2.5 text-ink">{row.sequence}</td>
+                <td className="px-3 py-2.5 font-medium text-ink">{row.name || '—'}</td>
+                <td className="px-3 py-2.5 text-ink">{formatShiftTime(row.start_time)}</td>
+                <td className="px-3 py-2.5 text-ink">{formatShiftTime(row.end_time)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {shifts.map((row) => (
-                <tr key={row.id} className="border-t border-line">
-                  <td className="px-3 py-2.5 text-ink">{row.sequence}</td>
-                  <td className="px-3 py-2.5 font-medium text-ink">{row.name || '—'}</td>
-                  <td className="px-3 py-2.5 text-ink">{formatShiftTime(row.start_time)}</td>
-                  <td className="px-3 py-2.5 text-ink">{formatShiftTime(row.end_time)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     )
   }
@@ -636,9 +770,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
                 onClick={() => openAdd('nozzles')}
                 disabled={!canConfigureNozzles}
                 className={`pf-btn-primary ${!canConfigureNozzles ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title={
-                  canConfigureNozzles ? undefined : nozzlePrerequisiteWarning
-                }
+                title={canConfigureNozzles ? undefined : nozzlePrerequisiteWarning}
               >
                 <Plus className="w-4 h-4" />
                 Add nozzles
@@ -651,7 +783,6 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
 
     return (
       <div className="space-y-4">
-        {nozzleBlockedNotice}
         <div className="overflow-x-auto rounded-lg border border-line">
           <table className="min-w-full text-[13px]">
             <thead className="bg-surface-muted text-ink-secondary">
@@ -721,7 +852,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
           <div>
             <h2 className="pf-section-title">Signup Completion</h2>
             <p className="pf-meta mt-0.5">
-              Review fuel types, shifts, and nozzles for {pumpName || 'this pump'}
+              Configure fuel types, shifts, and nozzles for {pumpName || 'this pump'}
             </p>
           </div>
         </div>
