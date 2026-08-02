@@ -1,17 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL || 'https://ebvzwbuigaaevkblmgcs.supabase.co'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || ''
 
 /**
  * Admin onboarding RPCs (admin_save_fuel_types, admin_sync_pump_shifts,
  * admin_save_nozzles) are EXECUTE-granted to service_role only.
- * Set VITE_SUPABASE_SERVICE_ROLE_KEY in local .env for this admin panel.
- * Never commit the key; never ship it in a public client build.
+ * Set VITE_SUPABASE_SERVICE_ROLE_KEY in .env / host env vars.
  */
-const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || ''
-
-export const hasAdminServiceRole = Boolean(serviceRoleKey)
+export const hasAdminServiceRole = Boolean(supabaseUrl && serviceRoleKey)
 
 export const supabaseAdmin = hasAdminServiceRole
   ? createClient(supabaseUrl, serviceRoleKey, {
@@ -26,7 +23,7 @@ export const supabaseAdmin = hasAdminServiceRole
 export function requireAdminClient() {
   if (!supabaseAdmin) {
     throw new Error(
-      'Admin onboarding RPCs require VITE_SUPABASE_SERVICE_ROLE_KEY in your .env (service_role only).'
+      'Admin onboarding RPCs require VITE_SUPABASE_URL and VITE_SUPABASE_SERVICE_ROLE_KEY in your environment.'
     )
   }
   return supabaseAdmin
