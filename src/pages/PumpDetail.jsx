@@ -95,9 +95,19 @@ export default function PumpDetail() {
   const isInformationView = /\/information\/?$/.test(location.pathname)
   const isSetupView = /\/setup\/?$/.test(location.pathname)
   const isDataView = !isInformationView && !isSetupView
+  const pumpsListPath = (() => {
+    const status = location.state?.pumpsStatus
+    const q = location.state?.pumpsSearch
+    const params = new URLSearchParams()
+    if (status && status !== 'active') params.set('status', status)
+    if (q) params.set('q', q)
+    const qs = params.toString()
+    return qs ? `/pumps?${qs}` : '/pumps'
+  })()
   const [pump, setPump] = useState(null)
   const [users, setUsers] = useState([])
   const [sales, setSales] = useState([])
+  const [salesBankAccountById, setSalesBankAccountById] = useState({})
   const [meterReadings, setMeterReadings] = useState([])
   const [nozzles, setNozzles] = useState({})
   const [fuelTypes, setFuelTypes] = useState({})
@@ -304,8 +314,8 @@ export default function PumpDetail() {
 
   useEffect(() => {
     if (!supportCheckDone || isSupportAdmin || !isSetupView) return
-    navigate(`/pumps/${id}/information`, { replace: true })
-  }, [supportCheckDone, isSupportAdmin, isSetupView, id, navigate])
+    navigate(`/pumps/${id}/information`, { replace: true, state: location.state })
+  }, [supportCheckDone, isSupportAdmin, isSetupView, id, navigate, location.state])
 
   useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
@@ -365,7 +375,7 @@ export default function PumpDetail() {
     setDataLoading(prev => ({ ...prev, [tab]: true }))
     try {
       switch (tab) {
-        case 'sales':
+        case 'sales': {
           const { data: salesData, error: salesError } = await supabase
             .from('sales')
             .select('*')
@@ -378,16 +388,83 @@ export default function PumpDetail() {
           }
           console.log(`Fetched ${salesData?.length || 0} sales records:`, salesData)
           setSales(salesData || [])
-          
+
+          // Resolve linked bank account via digital_payment_modes → treasury_buckets
+          // (fallback: treasury_ledger.to_bucket_id)
+          const modeIds = [
+            ...new Set((salesData || []).map((s) => s.digital_payment_mode_id).filter(Boolean)),
+          ]
+          const ledgerIds = [
+            ...new Set((salesData || []).map((s) => s.treasury_ledger_id).filter(Boolean)),
+          ]
+
+          const [modesRes, ledgersRes] = await Promise.all([
+            modeIds.length
+              ? supabase
+                  .from('digital_payment_modes')
+                  .select('id, name, treasury_bucket_id')
+                  .in('id', modeIds)
+              : Promise.resolve({ data: [], error: null }),
+            ledgerIds.length
+              ? supabase
+                  .from('treasury_ledger')
+                  .select('id, to_bucket_id')
+                  .in('id', ledgerIds)
+              : Promise.resolve({ data: [], error: null }),
+          ])
+          if (modesRes.error) console.error('Digital payment modes fetch error:', modesRes.error)
+          if (ledgersRes.error) console.error('Sales ledger fetch error:', ledgersRes.error)
+
+          const modeById = {}
+          ;(modesRes.data || []).forEach((m) => {
+            modeById[m.id] = m
+          })
+          const ledgerById = {}
+          ;(ledgersRes.data || []).forEach((l) => {
+            ledgerById[l.id] = l
+          })
+
+          const bucketIds = [
+            ...new Set(
+              [
+                ...(modesRes.data || []).map((m) => m.treasury_bucket_id),
+                ...(ledgersRes.data || []).map((l) => l.to_bucket_id),
+              ].filter(Boolean)
+            ),
+          ]
+
+          const bucketById = {}
+          if (bucketIds.length > 0) {
+            const { data: buckets, error: bucketsErr } = await supabase
+              .from('treasury_buckets')
+              .select('id, name, bank_name')
+              .in('id', bucketIds)
+            if (bucketsErr) console.error('Sales bank accounts fetch error:', bucketsErr)
+            ;(buckets || []).forEach((b) => {
+              bucketById[b.id] = b
+            })
+          }
+
+          const bankBySaleId = {}
+          ;(salesData || []).forEach((sale) => {
+            const fromMode = modeById[sale.digital_payment_mode_id]?.treasury_bucket_id
+            const fromLedger = ledgerById[sale.treasury_ledger_id]?.to_bucket_id
+            const bucketId = fromMode || fromLedger
+            const bucket = bucketId ? bucketById[bucketId] : null
+            bankBySaleId[sale.id] = bucket?.name || bucket?.bank_name || '—'
+          })
+          setSalesBankAccountById(bankBySaleId)
+
           // Fetch fuel type names for sales
-          const saleFuelTypeIds = [...new Set((salesData || [])
-            .map((s) => s.fuel_type_id)
-            .filter(Boolean))]
+          const saleFuelTypeIds = [
+            ...new Set((salesData || []).map((s) => s.fuel_type_id).filter(Boolean)),
+          ]
           if (saleFuelTypeIds.length > 0) {
             await fetchFuelTypes(saleFuelTypeIds)
           }
           await fetchShiftsForPump(id)
           break
+        }
 
         case 'meter-readings':
           const { data: readingsData, error: readingsError } = await supabase
@@ -1130,7 +1207,7 @@ export default function PumpDetail() {
       }
       const { error } = await supabase.from('pumps').delete().eq('id', id)
       if (error) throw error
-      navigate('/pumps')
+      navigate(pumpsListPath)
     } catch (error) {
       setMessage({
         type: 'error',
@@ -1161,7 +1238,7 @@ export default function PumpDetail() {
     return (
       <div className="pf-page text-center py-16">
         <p className="text-ink-secondary text-[15px]">Pump not found</p>
-        <Link to="/pumps" className="pf-btn-primary mt-4 inline-flex">
+        <Link to={pumpsListPath} className="pf-btn-primary mt-4 inline-flex">
           Back to pumps
         </Link>
       </div>
@@ -1190,7 +1267,7 @@ export default function PumpDetail() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex items-start gap-2.5 min-w-0 flex-1">
             <Link
-              to="/pumps"
+              to={pumpsListPath}
               className="pf-btn-ghost !px-2 !h-9 shrink-0 mt-0.5"
               aria-label="Back to pumps"
             >
@@ -1248,14 +1325,22 @@ export default function PumpDetail() {
             role="navigation"
             aria-label="Pump sections"
           >
-            <NavLink to={`/pumps/${id}`} end className={sectionTabClass}>
+            <NavLink to={`/pumps/${id}`} end state={location.state} className={sectionTabClass}>
               Pump Data
             </NavLink>
-            <NavLink to={`/pumps/${id}/information`} className={sectionTabClass}>
+            <NavLink
+              to={`/pumps/${id}/information`}
+              state={location.state}
+              className={sectionTabClass}
+            >
               Pump Information
             </NavLink>
             {isSupportAdmin && (
-              <NavLink to={`/pumps/${id}/setup`} className={sectionTabClass}>
+              <NavLink
+                to={`/pumps/${id}/setup`}
+                state={location.state}
+                className={sectionTabClass}
+              >
                 Pump Setup
               </NavLink>
             )}
@@ -1754,6 +1839,7 @@ export default function PumpDetail() {
                           <th className="px-4 py-3 text-left font-medium text-ink-secondary">Shift</th>
                           <th className="px-4 py-3 text-left font-medium text-ink-secondary">Amount</th>
                           <th className="px-4 py-3 text-left font-medium text-ink-secondary">Payment</th>
+                          <th className="px-4 py-3 text-left font-medium text-ink-secondary">Bank account</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1766,6 +1852,9 @@ export default function PumpDetail() {
                               <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
                                 {sale.payment_mode ? toTitleCase(sale.payment_mode) : 'N/A'}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 font-medium text-ink">
+                              {salesBankAccountById[sale.id] || '—'}
                             </td>
                           </tr>
                         ))}

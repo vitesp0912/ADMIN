@@ -1,25 +1,109 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Building2, CheckCircle, XCircle, Gauge, Phone } from 'lucide-react'
 import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 import StatusPill from '../components/ui/StatusPill'
 
+const VALID_STATUS = new Set(['active', 'pending', 'rejected'])
+const LIST_UI_KEY = 'petrofi.pumpsList.ui'
+
+const readListUi = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(LIST_UI_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+const writeListUi = (patch) => {
+  const next = { ...readListUi(), ...patch }
+  sessionStorage.setItem(LIST_UI_KEY, JSON.stringify(next))
+}
+
+const buildPumpsParams = ({ status, q }) => {
+  const params = new URLSearchParams()
+  if (status && status !== 'active') params.set('status', status)
+  if (q) params.set('q', q)
+  return params
+}
+
 export default function Pumps() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [pumps, setPumps] = useState([])
   const [meterReadings, setMeterReadings] = useState({})
   const [lastActivity, setLastActivity] = useState({})
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState('active')
   const [updating, setUpdating] = useState(null)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const pendingScrollY = useRef(null)
+
+  const filterStatus = useMemo(() => {
+    const raw = (searchParams.get('status') || 'active').toLowerCase()
+    return VALID_STATUS.has(raw) ? raw : 'active'
+  }, [searchParams])
+
+  const searchTerm = searchParams.get('q') || ''
+
+  const updateListParams = ({ status = filterStatus, q = searchTerm }) => {
+    setSearchParams(buildPumpsParams({ status, q }), { replace: true })
+  }
+
+  const setFilterStatus = (status) => {
+    const next = VALID_STATUS.has(status) ? status : 'active'
+    pendingScrollY.current = null
+    writeListUi({ restore: false, scrollY: 0 })
+    updateListParams({ status: next, q: searchTerm })
+    window.scrollTo(0, 0)
+  }
+
+  const setSearchTerm = (value) => {
+    updateListParams({ status: filterStatus, q: value })
+  }
 
   useEffect(() => {
     setLoading(true)
     fetchPumps()
   }, [filterStatus])
+
+  // Capture restore intent once when returning from a pump detail page
+  useEffect(() => {
+    if (loading) return
+    const saved = readListUi()
+    const savedStatus = saved.status || 'active'
+    const savedQ = saved.q || ''
+    if (
+      saved.restore &&
+      savedStatus === filterStatus &&
+      savedQ === searchTerm &&
+      typeof saved.scrollY === 'number'
+    ) {
+      pendingScrollY.current = saved.scrollY
+      writeListUi({ restore: false })
+    }
+  }, [loading, filterStatus, searchTerm])
+
+  // Re-apply scroll through list paint + late secondary fetches (meter/activity)
+  useEffect(() => {
+    if (loading || pendingScrollY.current == null) return
+    const y = pendingScrollY.current
+    const apply = () => window.scrollTo(0, y)
+    apply()
+    const raf = requestAnimationFrame(apply)
+    const t1 = setTimeout(apply, 50)
+    const t2 = setTimeout(apply, 200)
+    const t3 = setTimeout(() => {
+      apply()
+      pendingScrollY.current = null
+    }, 400)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+    }
+  }, [loading, filterStatus, searchTerm, pumps.length, meterReadings, lastActivity])
 
   const fetchPumps = async () => {
     try {
@@ -191,7 +275,18 @@ export default function Pumps() {
     if (e.target.closest('button')) {
       return
     }
-    navigate(`/pumps/${pumpId}`)
+    writeListUi({
+      restore: true,
+      scrollY: window.scrollY || window.pageYOffset || 0,
+      status: filterStatus,
+      q: searchTerm,
+    })
+    navigate(`/pumps/${pumpId}`, {
+      state: {
+        pumpsStatus: filterStatus,
+        pumpsSearch: searchTerm,
+      },
+    })
   }
 
   if (loading) {
