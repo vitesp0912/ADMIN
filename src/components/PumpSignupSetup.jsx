@@ -55,6 +55,7 @@ const emptyShift = (sequence = 1) => ({
 
 const emptyNozzle = () => ({
   id: crypto.randomUUID(),
+  name: '',
   fuelTypeId: '',
   initialReading: '0',
 })
@@ -626,7 +627,17 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
             <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
               Nozzle {index + 1}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <label className="block">
+                <span className="text-xs font-medium text-ink-secondary">Nozzle name</span>
+                <input
+                  type="text"
+                  value={row.name}
+                  onChange={(e) => updateNozzle(row.id, { name: e.target.value })}
+                  placeholder={`e.g. N${index + 1}`}
+                  className={`${fieldClass} mt-1.5`}
+                />
+              </label>
               <label className="block">
                 <span className="text-xs font-medium text-ink-secondary">Fuel type</span>
                 <select

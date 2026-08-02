@@ -553,6 +553,7 @@ DECLARE
   v_item JSONB;
   v_fuel_type_id UUID;
   v_fuel_name TEXT;
+  v_nozzle_name TEXT;
   v_initial NUMERIC;
   v_nozzle_id UUID;
   v_nozzle_number INT := 1;
@@ -650,12 +651,15 @@ BEGIN
         USING ERRCODE = 'check_violation';
     END IF;
 
+    v_nozzle_name := NULLIF(btrim(COALESCE(v_item->>'name', '')), '');
+
     v_nozzle_id := gen_random_uuid();
 
     INSERT INTO nozzle_info (
       pump_id,
       nozzle_id,
       nozzle_number,
+      name,
       fuel_type_id,
       fuel_type,
       initial_meter_reading,
@@ -664,6 +668,7 @@ BEGIN
       p_pump_id,
       v_nozzle_id,
       v_nozzle_number,
+      v_nozzle_name,
       v_fuel_type_id,
       v_fuel_name,
       v_initial,
@@ -692,6 +697,7 @@ BEGIN
       jsonb_build_object(
         'nozzle_id', v_nozzle_id,
         'nozzle_number', v_nozzle_number,
+        'name', v_nozzle_name,
         'fuel_type_id', v_fuel_type_id,
         'fuel_type', v_fuel_name,
         'initial_meter_reading', v_initial

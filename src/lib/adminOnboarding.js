@@ -232,10 +232,14 @@ export async function adminSyncPumpShifts(pumpId, shiftDraft) {
 
 export async function adminSaveNozzles(pumpId, { rows, meterDate, shiftId }) {
   const client = requireAdminClient()
-  const payload = rows.map((row) => ({
-    fuel_type_id: row.fuelTypeId,
-    initial_meter_reading: Number(row.initialReading),
-  }))
+  const payload = rows.map((row) => {
+    const name = (row.name || '').trim()
+    return {
+      fuel_type_id: row.fuelTypeId,
+      initial_meter_reading: Number(row.initialReading),
+      ...(name ? { name } : {}),
+    }
+  })
   const { data, error } = await client.rpc('admin_save_nozzles', {
     p_pump_id: pumpId,
     p_nozzles: payload,
