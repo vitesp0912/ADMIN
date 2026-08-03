@@ -437,7 +437,11 @@ export default function AuditLogs() {
       'amount': 'Amount',
       'quantity': 'Quantity',
       'customer_id': 'Customer',
-      'testing_amount': 'Testing amount (liters)'
+      'testing_amount': 'Testing amount (liters)',
+      'body': 'Note',
+      'note_type': 'Note Type',
+      'follow_up_at': 'Follow-up At',
+      'author_name': 'Author',
     }
     
     if (fieldMappings[field]) return fieldMappings[field]
@@ -570,7 +574,7 @@ export default function AuditLogs() {
       'user': 'User',
       'users': 'User',
       'udhar_ledger': 'Udhar Ledger',
-      'udhar ledger': 'Udhar Ledger'
+      'udhar ledger': 'Udhar Ledger',
     }
     return mappings[entity] || entity.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }

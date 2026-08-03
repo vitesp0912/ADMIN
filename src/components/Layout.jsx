@@ -14,6 +14,7 @@ import {
   Settings,
   FileText,
   AlertTriangle,
+  Shield,
   LogOut,
   Menu,
   X,
@@ -33,6 +34,8 @@ const ALL_NAV_ITEMS = [
   { path: '/settings', icon: Settings, label: 'Settings', supportOnly: true },
   { path: '/audit-logs', icon: FileText, label: 'Activity Log', supportOnly: true },
   { path: '/error-logs', icon: AlertTriangle, label: 'Error Logs', supportOnly: true },
+  { path: '/auth-users-audit', icon: Shield, label: 'Auth Users Audit', supportOnly: true },
+  { path: '/notes-audit', icon: FileText, label: 'Notes Audit', supportOnly: true },
 ]
 
 const PAGE_TITLES = {
@@ -46,6 +49,8 @@ const PAGE_TITLES = {
   '/settings': 'Settings',
   '/audit-logs': 'Activity Log',
   '/error-logs': 'Error Logs',
+  '/auth-users-audit': 'Auth Users Audit',
+  '/notes-audit': 'Notes Audit',
 }
 
 function getStoredTheme() {

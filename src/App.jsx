@@ -13,6 +13,8 @@ import Leads from './pages/Leads'
 import Settings from './pages/Settings'
 import AuditLogs from './pages/AuditLogs'
 import ErrorLogs from './pages/ErrorLogs'
+import AuthUsersAudit from './pages/AuthUsersAudit'
+import PumpNotesAudit from './pages/PumpNotesAudit'
 import Layout from './components/Layout'
 
 function App() {
@@ -65,6 +67,8 @@ function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="error-logs" element={<ErrorLogs />} />
+          <Route path="auth-users-audit" element={<AuthUsersAudit />} />
+          <Route path="notes-audit" element={<PumpNotesAudit />} />
         </Route>
       </Routes>
     </Router>

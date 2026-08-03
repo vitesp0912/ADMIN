@@ -249,12 +249,11 @@ create trigger trg_audit_admin_users
   for each row
   execute function public.fn_audit_admin_write();
 
--- pump_notes: add / edit / delete follow-ups
+-- pump_notes: NEVER attach to audit_logs / pump Activity Log.
+-- Notes use dedicated table via pump_notes_audit_trigger.sql only.
 drop trigger if exists trg_audit_admin_pump_notes on public.pump_notes;
-create trigger trg_audit_admin_pump_notes
-  after insert or update or delete on public.pump_notes
-  for each row
-  execute function public.fn_audit_admin_write();
+drop trigger if exists trg_audit_pump_notes on public.pump_notes;
+drop function if exists public.fn_audit_pump_notes();
 
 -- leads: create / update / delete
 drop trigger if exists trg_audit_admin_leads on public.leads;

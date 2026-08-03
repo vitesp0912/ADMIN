@@ -116,6 +116,7 @@ BEGIN
     COALESCE(al.new_values, al.new_data) as new_values
   FROM audit_logs al
   WHERE al.pump_id = p_pump_id
+    AND al.entity_type IS DISTINCT FROM 'pump_notes'
     AND (p_date_from IS NULL OR al.created_at >= p_date_from)
     AND (p_date_to IS NULL OR al.created_at <= p_date_to)
     AND (p_action IS NULL OR al.action = p_action)
@@ -151,6 +152,7 @@ BEGIN
     SELECT COUNT(*)::integer 
     FROM audit_logs 
     WHERE pump_id = p_pump_id
+      AND entity_type IS DISTINCT FROM 'pump_notes'
       AND (p_date_from IS NULL OR created_at >= p_date_from)
       AND (p_date_to IS NULL OR created_at <= p_date_to)
       AND (p_action IS NULL OR action = p_action)
@@ -178,8 +180,8 @@ RETURNS TABLE (
 BEGIN
   RETURN QUERY
   SELECT 
-    (SELECT ARRAY_AGG(DISTINCT action ORDER BY action) FROM audit_logs WHERE pump_id = p_pump_id)::text[] as actions,
-    (SELECT ARRAY_AGG(DISTINCT entity_type ORDER BY entity_type) FROM audit_logs WHERE pump_id = p_pump_id)::text[] as entity_types,
-    (SELECT ARRAY_AGG(DISTINCT actor_role ORDER BY actor_role) FROM audit_logs WHERE pump_id = p_pump_id AND actor_role IS NOT NULL)::text[] as actor_roles;
+    (SELECT ARRAY_AGG(DISTINCT action ORDER BY action) FROM audit_logs WHERE pump_id = p_pump_id AND entity_type IS DISTINCT FROM 'pump_notes')::text[] as actions,
+    (SELECT ARRAY_AGG(DISTINCT entity_type ORDER BY entity_type) FROM audit_logs WHERE pump_id = p_pump_id AND entity_type IS DISTINCT FROM 'pump_notes')::text[] as entity_types,
+    (SELECT ARRAY_AGG(DISTINCT actor_role ORDER BY actor_role) FROM audit_logs WHERE pump_id = p_pump_id AND actor_role IS NOT NULL AND entity_type IS DISTINCT FROM 'pump_notes')::text[] as actor_roles;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
