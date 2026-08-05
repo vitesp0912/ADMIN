@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, Building2, CheckCircle, XCircle, Gauge, Phone } from 'lucide-react'
+import { Search, Building2, CheckCircle, XCircle, Gauge, Phone, ArrowUpDown } from 'lucide-react'
 import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
-import StatusPill from '../components/ui/StatusPill'
+import { comparePumpState, getPumpStateMeta, getPumpStateSelectClass, PUMP_STATES } from '../lib/pumpState'
 
 const VALID_STATUS = new Set(['active', 'pending', 'rejected'])
 const LIST_UI_KEY = 'petrofi.pumpsList.ui'
@@ -36,7 +36,9 @@ export default function Pumps() {
   const [lastActivity, setLastActivity] = useState({})
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(null)
+  const [stateUpdatingId, setStateUpdatingId] = useState(null)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [sortByState, setSortByState] = useState(() => Boolean(readListUi().sortByState))
   const pendingScrollY = useRef(null)
 
   const filterStatus = useMemo(() => {
@@ -182,15 +184,30 @@ export default function Pumps() {
     }
   }
 
-  const filteredPumps = pumps.filter((pump) => {
-    const matchesSearch =
-      pump.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pump.pump_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pump.phone?.includes(searchTerm) ||
-      pump.owner_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredPumps = useMemo(() => {
+    const q = searchTerm.toLowerCase()
+    const list = pumps.filter((pump) => {
+      if (!q) return true
+      return (
+        pump.name?.toLowerCase().includes(q) ||
+        pump.pump_code?.toLowerCase().includes(q) ||
+        pump.phone?.includes(q) ||
+        pump.owner_name?.toLowerCase().includes(q)
+      )
+    })
+    if (sortByState) {
+      return [...list].sort(comparePumpState)
+    }
+    return list
+  }, [pumps, searchTerm, sortByState])
 
-    return matchesSearch
-  })
+  const toggleSortByState = () => {
+    setSortByState((prev) => {
+      const next = !prev
+      writeListUi({ sortByState: next })
+      return next
+    })
+  }
 
   const handleApprovePump = async (e, pumpId) => {
     e.stopPropagation()
@@ -270,9 +287,47 @@ export default function Pumps() {
     }
   }
 
+  const handlePumpStateChange = async (e, pump) => {
+    e.stopPropagation()
+    const nextState = e.target.value || null
+    const currentState = pump.pump_state || null
+    if (nextState === currentState) return
+
+    setStateUpdatingId(pump.id)
+    setPumps((prev) =>
+      prev.map((p) => (p.id === pump.id ? { ...p, pump_state: nextState } : p))
+    )
+
+    try {
+      const { error } = await supabase
+        .from('pumps')
+        .update({
+          pump_state: nextState,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', pump.id)
+
+      if (error) throw error
+
+      setMessage({
+        type: 'success',
+        text: `State updated to ${getPumpStateMeta(nextState).label}`,
+      })
+      setTimeout(() => setMessage({ type: '', text: '' }), 2500)
+    } catch (error) {
+      console.error('Error updating pump state:', error)
+      setPumps((prev) =>
+        prev.map((p) => (p.id === pump.id ? { ...p, pump_state: currentState } : p))
+      )
+      setMessage({ type: 'error', text: error.message || 'Failed to update pump state' })
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000)
+    } finally {
+      setStateUpdatingId(null)
+    }
+  }
+
   const handleRowClick = (pumpId, e) => {
-    // Don't navigate if clicking on a button
-    if (e.target.closest('button')) {
+    if (e.target.closest('button, select, a')) {
       return
     }
     writeListUi({
@@ -352,15 +407,30 @@ export default function Pumps() {
               ))}
             </div>
           </div>
-          <div className="relative w-full lg:w-auto lg:min-w-[280px]">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-muted w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search pumps..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pf-input !pl-9"
-            />
+          <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto lg:min-w-[280px]">
+            <button
+              type="button"
+              onClick={toggleSortByState}
+              className={`h-10 px-3 rounded-control text-[12px] font-semibold border transition-colors inline-flex items-center justify-center gap-2 shrink-0 ${
+                sortByState
+                  ? 'bg-brand-500 text-white border-transparent'
+                  : 'bg-surface text-ink-secondary border-line hover:bg-surface-muted hover:text-ink'
+              }`}
+              title="Sort pumps by lifecycle state"
+            >
+              <ArrowUpDown className="w-4 h-4" />
+              Sort by state
+            </button>
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-ink-muted w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search pumps..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pf-input !pl-9 w-full"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -380,7 +450,7 @@ export default function Pumps() {
                   <th>Name</th>
                   <th className="w-36">Phone</th>
                   <th className="w-28">Owner</th>
-                  <th className="w-32">Registration</th>
+                  <th className="w-44">State</th>
                   <th className="w-36">Meter Readings</th>
                   <th>Last Activity</th>
                 </tr>
@@ -422,18 +492,22 @@ export default function Pumps() {
                         {pump.owner_name || 'N/A'}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap">
-                      <StatusPill
-                        tone={
-                          pump.registration_status === 'approved'
-                            ? 'info'
-                            : pump.registration_status === 'pending'
-                              ? 'warn'
-                              : 'danger'
-                        }
+                    <td className="whitespace-nowrap px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={pump.pump_state || ''}
+                        disabled={stateUpdatingId === pump.id}
+                        onChange={(e) => handlePumpStateChange(e, pump)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Change state for ${pump.name}`}
+                        className={getPumpStateSelectClass(pump.pump_state)}
                       >
-                        {pump.registration_status || 'N/A'}
-                      </StatusPill>
+                        <option value="">Not set</option>
+                        {PUMP_STATES.map((state) => (
+                          <option key={state.value} value={state.value}>
+                            {state.label}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="whitespace-nowrap">
                       {meterReadings[pump.id] ? (
