@@ -9,4 +9,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
+/** Auth / session only — subject to RLS */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+export {
+  db,
+  supabaseAdmin,
+  hasAdminServiceRole,
+  requireAdminClient,
+} from './adminSupabase'

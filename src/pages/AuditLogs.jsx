@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { 
   FileText, 
   User, 
@@ -113,7 +113,7 @@ export default function AuditLogs() {
 
     let cancelled = false
     ;(async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('customers')
         .select('id, name, phone')
         .in('id', needIds)
@@ -141,7 +141,7 @@ export default function AuditLogs() {
 
   const fetchPumps = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('pumps')
         .select('id, name, pump_code')
         .order('pump_code', { ascending: true })
@@ -187,7 +187,7 @@ export default function AuditLogs() {
       const params = buildFilterParams()
       params.p_offset = currentOffset
       
-      const { data, error } = await supabase.rpc('get_audit_logs', params)
+      const { data, error } = await db.rpc('get_audit_logs', params)
 
       if (error) throw error
       
@@ -219,7 +219,7 @@ export default function AuditLogs() {
       if (filters.entityType) params.p_entity_type = filters.entityType
       if (filters.actorRole) params.p_actor_role = filters.actorRole
 
-      const { data, error } = await supabase.rpc('get_audit_logs_count', params)
+      const { data, error } = await db.rpc('get_audit_logs_count', params)
 
       if (error) throw error
       setTotalCount(data || 0)
@@ -230,7 +230,7 @@ export default function AuditLogs() {
 
   const fetchFilterOptions = async (pumpId) => {
     try {
-      const { data, error } = await supabase.rpc('get_audit_filter_options', { 
+      const { data, error } = await db.rpc('get_audit_filter_options', { 
         p_pump_id: pumpId 
       })
 

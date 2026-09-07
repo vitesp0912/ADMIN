@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate, useLocation, NavLink } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, db } from '../lib/supabase'
 import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight, ShoppingBag } from 'lucide-react'
 import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 import { isSupportAdminEmail, SUPPORT_ADMIN_EMAIL } from '../lib/authAccess'
@@ -325,7 +325,7 @@ export default function PumpDetail() {
 
   const fetchPumpDetails = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('pumps')
         .select('*')
         .eq('id', id)
@@ -358,7 +358,7 @@ export default function PumpDetail() {
 
   const fetchPumpUsers = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('users')
         .select('*')
         .eq('pump_id', id)
@@ -376,7 +376,7 @@ export default function PumpDetail() {
     try {
       switch (tab) {
         case 'sales': {
-          const { data: salesData, error: salesError } = await supabase
+          const { data: salesData, error: salesError } = await db
             .from('sales')
             .select('*')
             .eq('pump_id', id)
@@ -400,13 +400,13 @@ export default function PumpDetail() {
 
           const [modesRes, ledgersRes] = await Promise.all([
             modeIds.length
-              ? supabase
+              ? db
                   .from('digital_payment_modes')
                   .select('id, name, treasury_bucket_id')
                   .in('id', modeIds)
               : Promise.resolve({ data: [], error: null }),
             ledgerIds.length
-              ? supabase
+              ? db
                   .from('treasury_ledger')
                   .select('id, to_bucket_id')
                   .in('id', ledgerIds)
@@ -435,7 +435,7 @@ export default function PumpDetail() {
 
           const bucketById = {}
           if (bucketIds.length > 0) {
-            const { data: buckets, error: bucketsErr } = await supabase
+            const { data: buckets, error: bucketsErr } = await db
               .from('treasury_buckets')
               .select('id, name, bank_name')
               .in('id', bucketIds)
@@ -467,7 +467,7 @@ export default function PumpDetail() {
         }
 
         case 'meter-readings':
-          const { data: readingsData, error: readingsError } = await supabase
+          const { data: readingsData, error: readingsError } = await db
             .from('nozzle_reading')
             .select('*')
             .eq('pump_id', id)
@@ -494,7 +494,7 @@ export default function PumpDetail() {
           break
 
         case 'expenses':
-          const { data: expensesData, error: expensesError } = await supabase
+          const { data: expensesData, error: expensesError } = await db
             .from('expenses')
             .select('*')
             .eq('pump_id', id)
@@ -510,7 +510,7 @@ export default function PumpDetail() {
           break
 
         case 'inventory':
-          const { data: inventoryData, error: inventoryError } = await supabase
+          const { data: inventoryData, error: inventoryError } = await db
             .from('inventory')
             .select('*')
             .eq('pump_id', id)
@@ -526,18 +526,18 @@ export default function PumpDetail() {
         case 'inventory-purchases': {
           const [{ data: purchaseData, error: purchaseErr }, { data: invData, error: invErr }, bucketsRes] =
             await Promise.all([
-              supabase
+              db
                 .from('inventory_purchases')
                 .select('*')
                 .eq('pump_id', id)
                 .order('purchase_date', { ascending: false })
                 .order('created_at', { ascending: false })
                 .limit(500),
-              supabase
+              db
                 .from('inventory')
                 .select('id, name')
                 .eq('pump_id', id),
-              supabase
+              db
                 .from('treasury_buckets')
                 .select('*')
                 .eq('pump_id', id)
@@ -565,13 +565,13 @@ export default function PumpDetail() {
 
         case 'inventory-sales': {
           const [{ data: salesInvData, error: salesInvErr }, customersRes] = await Promise.all([
-            supabase
+            db
               .from('inventory_sales')
               .select('*')
               .eq('pump_id', id)
               .order('sold_at', { ascending: false })
               .limit(500),
-            supabase
+            db
               .from('customers')
               .select('id, name, phone')
               .eq('pump_id', id),
@@ -593,7 +593,7 @@ export default function PumpDetail() {
         }
 
         case 'customers':
-          const { data: customersData, error: customersError } = await supabase
+          const { data: customersData, error: customersError } = await db
             .from('customers')
             .select('*')
             .eq('pump_id', id)
@@ -607,7 +607,7 @@ export default function PumpDetail() {
           break
 
         case 'udhar-ledger': {
-          const { data: udharData, error: udharError } = await supabase
+          const { data: udharData, error: udharError } = await db
             .from('udhar_ledger')
             .select('*')
             .eq('pump_id', id)
@@ -626,7 +626,7 @@ export default function PumpDetail() {
           const lookups = []
           if (custIds.length > 0) {
             lookups.push(
-              supabase
+              db
                 .from('customers')
                 .select('id, name, phone')
                 .in('id', custIds)
@@ -645,7 +645,7 @@ export default function PumpDetail() {
           }
           if (staffIds.length > 0) {
             lookups.push(
-              supabase
+              db
                 .from('users')
                 .select('id, name')
                 .in('id', staffIds)
@@ -668,7 +668,7 @@ export default function PumpDetail() {
         }
 
         case 'tanks': {
-          const { data: tanksData, error: tanksErr } = await supabase
+          const { data: tanksData, error: tanksErr } = await db
             .from('tanks')
             .select('*')
             .eq('pump_id', id)
@@ -691,7 +691,7 @@ export default function PumpDetail() {
         }
 
         case 'fuel-receipts': {
-          const { data: frData, error: frErr } = await supabase
+          const { data: frData, error: frErr } = await db
             .from('fuel_receipts')
             .select('*')
             .eq('pump_id', id)
@@ -702,7 +702,7 @@ export default function PumpDetail() {
             throw frErr
           }
           setFuelReceipts(frData || [])
-          const { data: tanksForPump, error: tanksForPumpErr } = await supabase
+          const { data: tanksForPump, error: tanksForPumpErr } = await db
             .from('tanks')
             .select('*')
             .eq('pump_id', id)
@@ -721,7 +721,7 @@ export default function PumpDetail() {
         }
 
         case 'notes': {
-          const { data: notesData, error: notesErr } = await supabase
+          const { data: notesData, error: notesErr } = await db
             .from('pump_notes')
             .select('*')
             .eq('pump_id', id)
@@ -736,7 +736,7 @@ export default function PumpDetail() {
         }
 
         case 'bank-accounts': {
-          const { data, error } = await supabase
+          const { data, error } = await db
             .from('treasury_buckets')
             .select('*')
             .eq('pump_id', id)
@@ -752,12 +752,12 @@ export default function PumpDetail() {
 
         case 'treasury-transactions': {
           const [bucketsRes, ledgerRes] = await Promise.all([
-            supabase
+            db
               .from('treasury_buckets')
               .select('*')
               .eq('pump_id', id)
               .order('display_order', { ascending: true }),
-            supabase
+            db
               .from('treasury_ledger')
               .select('*')
               .eq('pump_id', id)
@@ -781,12 +781,12 @@ export default function PumpDetail() {
 
         case 'activity': {
           const [{ data: logData, error: logErr }, { data: countData, error: countErr }] = await Promise.all([
-            supabase.rpc('get_audit_logs', {
+            db.rpc('get_audit_logs', {
               p_pump_id: id,
               p_limit: 100,
               p_offset: 0,
             }),
-            supabase.rpc('get_audit_logs_count', { p_pump_id: id }),
+            db.rpc('get_audit_logs_count', { p_pump_id: id }),
           ])
           if (logErr) {
             console.error('Activity fetch error:', logErr)
@@ -799,7 +799,7 @@ export default function PumpDetail() {
         }
 
         case 'error-logs': {
-          const { data: errData, error: errLogErr } = await supabase
+          const { data: errData, error: errLogErr } = await db
             .from('error_audits')
             .select('*')
             .eq('pump_id', id)
@@ -824,7 +824,7 @@ export default function PumpDetail() {
 
   const fetchNozzlesForPump = async (pumpId, nozzleIds) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('nozzle_info')
         .select('*')
         .eq('pump_id', pumpId)
@@ -846,7 +846,7 @@ export default function PumpDetail() {
 
   const fetchFuelTypes = async (fuelTypeIds) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('fuel_types')
         .select('*')
         .in('id', fuelTypeIds)
@@ -866,7 +866,7 @@ export default function PumpDetail() {
 
   const fetchShiftsForPump = async (pumpId) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('shifts')
         .select('id, name, sequence, start_time, end_time, is_active')
         .eq('pump_id', pumpId)
@@ -922,7 +922,7 @@ export default function PumpDetail() {
       const authorName = authorDisplayName(user)
 
       if (noteForm.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from('pump_notes')
           .update({
             body,
@@ -933,7 +933,7 @@ export default function PumpDetail() {
           .eq('id', noteForm.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('pump_notes').insert({
+        const { error } = await db.from('pump_notes').insert({
           pump_id: id,
           body,
           note_type: 'follow_up',
@@ -956,7 +956,7 @@ export default function PumpDetail() {
     if (!confirm('Delete this note?')) return
     setNoteDeletingId(noteId)
     try {
-      const { error } = await supabase.from('pump_notes').delete().eq('id', noteId)
+      const { error } = await db.from('pump_notes').delete().eq('id', noteId)
       if (error) throw error
       if (noteForm.id === noteId) resetNoteForm()
       await fetchTabData('notes')
@@ -1010,14 +1010,14 @@ export default function PumpDetail() {
       console.log('Updating pump with data:', updateData)
       console.log('Pump ID:', id)
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('pumps')
         .update(updateData)
         .eq('id', id)
         .select()
 
       if (error) {
-        console.error('Supabase error details:', {
+        console.error('db error details:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
@@ -1040,7 +1040,7 @@ export default function PumpDetail() {
 
       if (shouldActivateUsers) {
         console.log('Activating users for pump:', id)
-        const { error: usersError } = await supabase
+        const { error: usersError } = await db
           .from('users')
           .update({ is_active: true, updated_at: new Date().toISOString() })
           .eq('pump_id', id)
@@ -1149,7 +1149,7 @@ export default function PumpDetail() {
       if (!isSupportAdminEmail(user?.email)) {
         throw new Error(`Only ${SUPPORT_ADMIN_EMAIL} can set or view user passwords.`)
       }
-      const { error } = await supabase.rpc('set_user_password', {
+      const { error } = await db.rpc('set_user_password', {
         p_user_id: selectedUserId,
         p_new_password: modalPassword,
       })
@@ -1205,7 +1205,7 @@ export default function PumpDetail() {
       if (!isSupportAdminEmail(user?.email)) {
         throw new Error(`Only ${SUPPORT_ADMIN_EMAIL} can delete petrol pumps.`)
       }
-      const { error } = await supabase.from('pumps').delete().eq('id', id)
+      const { error } = await db.from('pumps').delete().eq('id', id)
       if (error) throw error
       navigate(pumpsListPath)
     } catch (error) {

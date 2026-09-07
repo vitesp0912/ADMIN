@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { 
   AlertTriangle,
   Clock, 
@@ -100,7 +100,7 @@ export default function ErrorLogs() {
     try {
       const params = buildFilterParams(currentOffset)
       
-      const { data, error } = await supabase.rpc('get_error_logs', params)
+      const { data, error } = await db.rpc('get_error_logs', params)
 
       if (error) throw error
       
@@ -127,7 +127,7 @@ export default function ErrorLogs() {
         params.p_show_resolved = filters.showResolved === 'true'
       }
 
-      const { data, error } = await supabase.rpc('get_error_logs_count', params)
+      const { data, error } = await db.rpc('get_error_logs_count', params)
 
       if (error) throw error
       setTotalCount(data || 0)
@@ -138,7 +138,7 @@ export default function ErrorLogs() {
 
   const fetchFilterOptions = async () => {
     try {
-      const { data, error } = await supabase.rpc('get_error_filter_options')
+      const { data, error } = await db.rpc('get_error_filter_options')
 
       if (error) throw error
       if (data && data[0]) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { Plus, Search, Filter, Users, Phone, TrendingUp, X } from 'lucide-react'
 
 const STATUS_OPTIONS = ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'converted', 'lost', 'on_hold']
@@ -51,7 +51,7 @@ export default function Leads() {
   const fetchLeads = async () => {
     setLoading(true)
     try {
-      const { data: leadRows, error: leadErr } = await supabase
+      const { data: leadRows, error: leadErr } = await db
         .from('leads')
         .select('*')
         .order('created_at', { ascending: false })
@@ -122,11 +122,11 @@ export default function Leads() {
       }
 
       if (form.id) {
-        const { error } = await supabase.from('leads').update(payload).eq('id', form.id)
+        const { error } = await db.from('leads').update(payload).eq('id', form.id)
         if (error) throw error
         setMessage({ type: 'success', text: 'Lead updated successfully.' })
       } else {
-        const { error } = await supabase.from('leads').insert(payload)
+        const { error } = await db.from('leads').insert(payload)
         if (error) throw error
         setMessage({ type: 'success', text: 'Lead created successfully.' })
       }
@@ -143,7 +143,7 @@ export default function Leads() {
     if (!form.id) return
     setDeleting(true)
     try {
-      const { error } = await supabase.from('leads').delete().eq('id', form.id)
+      const { error } = await db.from('leads').delete().eq('id', form.id)
       if (error) throw error
       setDeleteOpen(false)
       closeModal()
@@ -159,7 +159,7 @@ export default function Leads() {
   const handleInlineFieldUpdate = async (leadId, field, value) => {
     setInlineSavingId(leadId)
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('leads')
         .update({ [field]: value, updated_at: new Date().toISOString() })
         .eq('id', leadId)

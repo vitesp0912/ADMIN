@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { Bell } from 'lucide-react'
 import StatusPill from './ui/StatusPill'
 
@@ -13,7 +13,7 @@ export default function PasswordResetBell({ className = '' }) {
   const fetchRequests = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('users')
         .select('id, name, phone, role, forgot_password_requested_at')
         .eq('forgot_password_requested', true)
@@ -57,7 +57,7 @@ export default function PasswordResetBell({ className = '' }) {
   const handleClear = async (userId) => {
     setClearLoading((prev) => ({ ...prev, [userId]: true }))
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('users')
         .update({ forgot_password_requested: false, forgot_password_requested_at: null })
         .eq('id', userId)

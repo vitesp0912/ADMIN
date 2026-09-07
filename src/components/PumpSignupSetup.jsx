@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Clock, Fuel, Gauge, Loader2, Plus, X } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import { hasAdminServiceRole, requireAdminClient } from '../lib/adminSupabase'
+import { db, hasAdminServiceRole } from '../lib/supabase'
 import {
   ALLOWED_FUEL_TYPE_NAMES,
   FUEL_COUNT_MAX,
@@ -148,8 +147,6 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     setError('')
     try {
       // Prefer service-role client so pending-pump rows are visible after admin writes
-      const db = hasAdminServiceRole ? requireAdminClient() : supabase
-
       const [fuelRes, shiftRes, nozzleRes, readingRes] = await Promise.all([
         db
           .from('fuel_types')

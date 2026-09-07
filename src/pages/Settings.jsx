@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { Settings as SettingsIcon, Building2, Fuel, Zap } from 'lucide-react'
 
 export default function Settings() {
@@ -25,7 +25,7 @@ export default function Settings() {
 
   const fetchPumps = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('pumps')
         .select('id, name, pump_code, address')
         .order('pump_code', { ascending: true })
@@ -49,7 +49,7 @@ export default function Settings() {
     setMetricsLoading(true)
     try {
       // Call the RPC function - single source of truth
-      const { data, error } = await supabase
+      const { data, error } = await db
         .rpc('get_pump_operational_metrics', { p_pump_id: pumpId })
 
       if (error) {

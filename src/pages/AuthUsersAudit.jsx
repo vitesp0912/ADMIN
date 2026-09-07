@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import {
   Shield,
   User,
@@ -106,7 +106,7 @@ export default function AuthUsersAudit() {
     else setLogsLoading(true)
 
     try {
-      let query = supabase
+      let query = db
         .from('auth_users_audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
@@ -129,7 +129,7 @@ export default function AuthUsersAudit() {
 
   const fetchTotalCount = async () => {
     try {
-      let query = supabase
+      let query = db
         .from('auth_users_audit_logs')
         .select('*', { count: 'exact', head: true })
 

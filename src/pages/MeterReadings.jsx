@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { Search, Gauge } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -31,7 +31,7 @@ export default function MeterReadings() {
 
   const fetchReadings = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('nozzle_reading')
         .select('*')
         .order('date', { ascending: false })
@@ -47,7 +47,7 @@ export default function MeterReadings() {
 
       // Fetch pump names
       if (pumpIds.length > 0) {
-        const { data: pumpsData, error: pumpsError } = await supabase
+        const { data: pumpsData, error: pumpsError } = await db
           .from('pumps')
           .select('id, name, pump_code')
           .in('id', pumpIds)
@@ -79,7 +79,7 @@ export default function MeterReadings() {
 
   const fetchNozzles = async (pumpIds, nozzleIds) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('nozzle_info')
         .select('*')
         .in('pump_id', pumpIds)
@@ -100,7 +100,7 @@ export default function MeterReadings() {
 
   const fetchFuelTypes = async (fuelTypeIds) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('fuel_types')
         .select('*')
         .in('id', fuelTypeIds)

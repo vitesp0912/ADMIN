@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import {
   FileText,
   User,
@@ -118,7 +118,7 @@ export default function PumpNotesAudit() {
     else setLogsLoading(true)
 
     try {
-      let query = supabase
+      let query = db
         .from('pump_notes_audit_logs')
         .select('*')
         .order('created_at', { ascending: false })
@@ -141,7 +141,7 @@ export default function PumpNotesAudit() {
 
   const fetchTotalCount = async () => {
     try {
-      let query = supabase
+      let query = db
         .from('pump_notes_audit_logs')
         .select('*', { count: 'exact', head: true })
 

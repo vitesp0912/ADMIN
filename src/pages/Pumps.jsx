@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, db } from '../lib/supabase'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Building2, CheckCircle, XCircle, Gauge, Phone, ArrowUpDown } from 'lucide-react'
 import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
@@ -109,7 +109,7 @@ export default function Pumps() {
 
   const fetchPumps = async () => {
     try {
-      let query = supabase.from('pumps').select('*').order('created_at', { ascending: false })
+      let query = db.from('pumps').select('*').order('created_at', { ascending: false })
 
       if (filterStatus === 'active') {
         query = query.eq('is_active', true)
@@ -143,7 +143,7 @@ export default function Pumps() {
     try {
       const summaries = await Promise.all(
         pumpIds.map(async (pumpId) => {
-          const { count, error } = await supabase
+          const { count, error } = await db
             .from('nozzle_reading')
             .select('id', { count: 'exact', head: true })
             .eq('pump_id', pumpId)
@@ -165,7 +165,7 @@ export default function Pumps() {
     try {
       const summaries = await Promise.all(
         pumpIds.map(async (pumpId) => {
-          const { data, error } = await supabase.rpc('get_audit_logs', {
+          const { data, error } = await db.rpc('get_audit_logs', {
             p_pump_id: pumpId,
             p_limit: 1,
             p_offset: 0,
@@ -216,7 +216,7 @@ export default function Pumps() {
       const { data: { user } } = await supabase.auth.getUser()
       
       // Update pump status
-      const { error } = await supabase
+      const { error } = await db
         .from('pumps')
         .update({
           registration_status: 'approved',
@@ -233,7 +233,7 @@ export default function Pumps() {
       if (error) throw error
 
       // Activate all users for this pump
-      const { error: usersError } = await supabase
+      const { error: usersError } = await db
         .from('users')
         .update({ is_active: true, updated_at: new Date().toISOString() })
         .eq('pump_id', pumpId)
@@ -264,7 +264,7 @@ export default function Pumps() {
     
     setUpdating(pumpId)
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('pumps')
         .update({
           registration_status: 'rejected',
@@ -299,7 +299,7 @@ export default function Pumps() {
     )
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('pumps')
         .update({
           pump_state: nextState,

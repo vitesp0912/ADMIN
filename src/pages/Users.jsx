@@ -17,7 +17,7 @@ function Modal({ open, onClose, children }) {
     </div>
   )
 }
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { Search, User, Eye } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -81,7 +81,7 @@ export default function Users() {
     setPasswordError('')
     setPasswordSuccess('')
     try {
-      const { error } = await supabase.rpc('set_user_password', {
+      const { error } = await db.rpc('set_user_password', {
         p_user_id: modalUser.id,
         p_new_password: modalPassword
       })
@@ -109,7 +109,7 @@ export default function Users() {
 
   const fetchUsers = async () => {
     try {
-      let query = supabase
+      let query = db
         .from('users')
         .select('*')
         .order('created_at', { ascending: false })
@@ -126,7 +126,7 @@ export default function Users() {
 
       // Fetch pump names for each user
       const pumpIds = [...new Set((data || []).map((u) => u.pump_id))]
-      const { data: pumpsData, error: pumpsError } = await supabase
+      const { data: pumpsData, error: pumpsError } = await db
         .from('pumps')
         .select('id, name, pump_code')
         .in('id', pumpIds)

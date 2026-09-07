@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { formatCount } from '../lib/format'
 import KpiCard from '../components/ui/KpiCard'
 import StatusPill from '../components/ui/StatusPill'
@@ -21,8 +21,8 @@ export default function Dashboard() {
     ;(async () => {
       try {
         const [pumpsRes, recentRes] = await Promise.all([
-          supabase.from('pumps').select('id, is_active, registration_status'),
-          supabase
+          db.from('pumps').select('id, is_active, registration_status'),
+          db
             .from('pumps')
             .select('id, name, pump_code, registration_status, is_active, created_at')
             .order('created_at', { ascending: false })

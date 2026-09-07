@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { Search, Calendar, ShoppingCart } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -32,7 +32,7 @@ export default function Sales() {
 
   const fetchSales = async () => {
     try {
-      let query = supabase
+      let query = db
         .from('sales')
         .select('*')
         .order('date_time', { ascending: false })
@@ -65,7 +65,7 @@ export default function Sales() {
       // Fetch pump names
       const pumpIds = [...new Set((data || []).map((s) => s.pump_id))]
       if (pumpIds.length > 0) {
-        const { data: pumpsData, error: pumpsError } = await supabase
+        const { data: pumpsData, error: pumpsError } = await db
           .from('pumps')
           .select('id, name, pump_code')
           .in('id', pumpIds)
