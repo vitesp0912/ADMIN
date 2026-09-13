@@ -1102,6 +1102,19 @@ export default function PumpDetail() {
     await handleSaveChanges(approvedFormData)
   }
 
+  const handleQuickPending = async () => {
+    const pendingFormData = {
+      ...formData,
+      is_active: false,
+      registration_status: 'pending',
+      payment_verified: false,
+      subscription_status: 'inactive',
+    }
+
+    setFormData(pendingFormData)
+    await handleSaveChanges(pendingFormData)
+  }
+
   const handleQuickReject = async () => {
     const rejectedFormData = {
       ...formData,
@@ -2893,6 +2906,15 @@ export default function PumpDetail() {
                     </button>
                     <button
                       type="button"
+                      onClick={handleQuickPending}
+                      disabled={saving}
+                      className="px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <Clock className="w-5 h-5" />
+                      {saving ? 'Updating...' : 'Quick Pending'}
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleQuickReject}
                       disabled={saving}
                       className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
@@ -2972,6 +2994,7 @@ export default function PumpDetail() {
                     >
                       <option value="pending">Pending</option>
                       <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
                       <option value="suspended">Suspended</option>
                       <option value="cancelled">Cancelled</option>
                     </select>
