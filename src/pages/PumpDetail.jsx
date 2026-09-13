@@ -1108,7 +1108,7 @@ export default function PumpDetail() {
       is_active: false,
       registration_status: 'pending',
       payment_verified: false,
-      subscription_status: 'inactive',
+      subscription_status: 'pending',
     }
 
     setFormData(pendingFormData)
@@ -2994,7 +2994,6 @@ export default function PumpDetail() {
                     >
                       <option value="pending">Pending</option>
                       <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
                       <option value="suspended">Suspended</option>
                       <option value="cancelled">Cancelled</option>
                     </select>
