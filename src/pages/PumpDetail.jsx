@@ -981,7 +981,14 @@ export default function PumpDetail() {
       
       console.log('Current user:', user.email || user.id)
 
-      const dataToSave = overrideFormData || formData
+      // Ignore React synthetic events when Save is wired as onClick={handleSaveChanges}
+      const dataToSave =
+        overrideFormData &&
+        typeof overrideFormData === 'object' &&
+        !('nativeEvent' in overrideFormData) &&
+        ('registration_status' in overrideFormData || 'is_active' in overrideFormData)
+          ? overrideFormData
+          : formData
       
       const updateData = {
         is_active: dataToSave.is_active,
@@ -1029,7 +1036,12 @@ export default function PumpDetail() {
       console.log('Update successful:', data)
 
       // Keep local form in sync with what was saved
-      if (overrideFormData) {
+      if (
+        overrideFormData &&
+        typeof overrideFormData === 'object' &&
+        !('nativeEvent' in overrideFormData) &&
+        ('registration_status' in overrideFormData || 'is_active' in overrideFormData)
+      ) {
         setFormData(overrideFormData)
       }
 
@@ -3019,7 +3031,8 @@ export default function PumpDetail() {
                 {/* Save Button */}
                 <div className="flex justify-end gap-4 pt-4 border-t">
                   <button
-                    onClick={handleSaveChanges}
+                    type="button"
+                    onClick={() => handleSaveChanges()}
                     disabled={saving}
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >

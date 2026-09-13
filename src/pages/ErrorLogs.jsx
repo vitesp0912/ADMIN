@@ -19,6 +19,38 @@ import {
   Layers
 } from 'lucide-react'
 
+const ERROR_TYPE_LABELS = {
+  NETWORK_ERROR: 'Network Error',
+  AUTH_ERROR: 'Authentication Error',
+  VALIDATION_ERROR: 'Validation Error',
+  DATABASE_ERROR: 'Database Error',
+  API_ERROR: 'API Error',
+  PERMISSION_ERROR: 'Permission Denied',
+  NOT_FOUND: 'Not Found',
+  TIMEOUT: 'Timeout',
+  SYNC_ERROR: 'Sync Error',
+  PAYMENT_ERROR: 'Payment Error',
+  UPLOAD_ERROR: 'Upload Error',
+  UNKNOWN: 'Unknown Error',
+}
+
+function formatErrorTypeOption(errorType) {
+  if (!errorType) return 'Unknown'
+  return (
+    ERROR_TYPE_LABELS[errorType] ||
+    errorType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+  )
+}
+
+function formatScreenOption(screen) {
+  if (!screen) return 'Unknown'
+  return screen
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/\b\w/g, (l) => l.toUpperCase())
+    .trim()
+}
+
 // ============================================
 // ERROR LOGS PAGE
 // ============================================
@@ -47,6 +79,7 @@ export default function ErrorLogs() {
     screenNames: []
   })
   const [activeFilterCount, setActiveFilterCount] = useState(0)
+  const [loadError, setLoadError] = useState('')
 
   const LIMIT = 20
 
@@ -75,42 +108,85 @@ export default function ErrorLogs() {
     setActiveFilterCount(count)
   }, [filters])
 
-  const buildFilterParams = useCallback((currentOffset) => {
-    const params = {
-      p_limit: LIMIT,
-      p_offset: currentOffset
+  const applyErrorFilters = useCallback(
+    (query) => {
+      let q = query
+      if (filters.errorType) q = q.eq('error_type', filters.errorType)
+      if (filters.screenName) q = q.eq('screen_name', filters.screenName)
+      if (filters.showResolved === 'true') q = q.not('resolved_at', 'is', null)
+      if (filters.showResolved === 'false') q = q.is('resolved_at', null)
+      return q
+    },
+    [filters]
+  )
+
+  const mapErrorRow = (row, pumpById = {}) => {
+    const pump = row.pump_id ? pumpById[row.pump_id] : null
+    return {
+      ...row,
+      user_name: row.user_name || row.phone || 'Unknown User',
+      pump_name: row.pump_name || pump?.name || 'Unknown Pump',
+      pump_code: row.pump_code || pump?.pump_code || null,
+      error_type_label: formatErrorTypeOption(row.error_type || 'UNKNOWN'),
+      screen_label: formatScreenOption(row.screen_name),
+      is_resolved: Boolean(row.resolved_at),
     }
-    
-    if (filters.errorType) params.p_error_type = filters.errorType
-    if (filters.screenName) params.p_screen_name = filters.screenName
-    if (filters.showResolved !== '') {
-      params.p_show_resolved = filters.showResolved === 'true'
+  }
+
+  const fetchPumpMap = async (rows) => {
+    const pumpIds = [...new Set(rows.map((r) => r.pump_id).filter(Boolean))]
+    if (pumpIds.length === 0) return {}
+    const { data, error } = await db.from('pumps').select('id, name, pump_code').in('id', pumpIds)
+    if (error) {
+      console.error('Error fetching pumps for error logs:', error)
+      return {}
     }
-    
-    return params
-  }, [filters])
+    const map = {}
+    ;(data || []).forEach((p) => {
+      map[p.id] = p
+    })
+    return map
+  }
 
   const fetchLogs = async (currentOffset) => {
+    if (!db) {
+      setLoadError('Admin data client is not configured (missing service role key).')
+      setLoading(false)
+      return
+    }
+
     if (currentOffset === 0) {
       setLoading(true)
     } else {
       setLogsLoading(true)
     }
-    
-    try {
-      const params = buildFilterParams(currentOffset)
-      
-      const { data, error } = await db.rpc('get_error_logs', params)
 
+    try {
+      setLoadError('')
+      let query = db
+        .from('error_audits')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(currentOffset, currentOffset + LIMIT - 1)
+
+      query = applyErrorFilters(query)
+
+      const { data, error } = await query
       if (error) throw error
-      
+
+      const rows = data || []
+      const pumpById = await fetchPumpMap(rows)
+      const mapped = rows.map((row) => mapErrorRow(row, pumpById))
+
       if (currentOffset === 0) {
-        setLogs(data || [])
+        setLogs(mapped)
       } else {
-        setLogs(prev => [...prev, ...(data || [])])
+        setLogs((prev) => [...prev, ...mapped])
       }
     } catch (error) {
       console.error('Error fetching error logs:', error)
+      setLoadError(error.message || 'Failed to load error logs')
+      if (currentOffset === 0) setLogs([])
     } finally {
       setLoading(false)
       setLogsLoading(false)
@@ -118,35 +194,46 @@ export default function ErrorLogs() {
   }
 
   const fetchTotalCount = async () => {
+    if (!db) return
     try {
-      const params = {}
-      
-      if (filters.errorType) params.p_error_type = filters.errorType
-      if (filters.screenName) params.p_screen_name = filters.screenName
-      if (filters.showResolved !== '') {
-        params.p_show_resolved = filters.showResolved === 'true'
-      }
+      let query = db
+        .from('error_audits')
+        .select('*', { count: 'exact', head: true })
 
-      const { data, error } = await db.rpc('get_error_logs_count', params)
+      query = applyErrorFilters(query)
 
+      const { count, error } = await query
       if (error) throw error
-      setTotalCount(data || 0)
+      setTotalCount(count || 0)
     } catch (error) {
       console.error('Error fetching count:', error)
     }
   }
 
   const fetchFilterOptions = async () => {
+    if (!db) return
     try {
-      const { data, error } = await db.rpc('get_error_filter_options')
+      // Prefer RPC when available; fall back to sampling the table
+      const { data: rpcData, error: rpcError } = await db.rpc('get_error_filter_options')
+      if (!rpcError && rpcData?.[0]) {
+        setFilterOptions({
+          errorTypes: rpcData[0].error_types || [],
+          screenNames: rpcData[0].screen_names || [],
+        })
+        return
+      }
+
+      const { data, error } = await db
+        .from('error_audits')
+        .select('error_type, screen_name')
+        .order('created_at', { ascending: false })
+        .limit(500)
 
       if (error) throw error
-      if (data && data[0]) {
-        setFilterOptions({
-          errorTypes: data[0].error_types || [],
-          screenNames: data[0].screen_names || []
-        })
-      }
+
+      const errorTypes = [...new Set((data || []).map((r) => r.error_type).filter(Boolean))].sort()
+      const screenNames = [...new Set((data || []).map((r) => r.screen_name).filter(Boolean))].sort()
+      setFilterOptions({ errorTypes, screenNames })
     } catch (error) {
       console.error('Error fetching filter options:', error)
     }
@@ -264,28 +351,10 @@ export default function ErrorLogs() {
   }
 
   // Format error type for filter dropdown
-  const formatErrorTypeOption = (errorType) => {
-    const mappings = {
-      'NETWORK_ERROR': 'Network Error',
-      'AUTH_ERROR': 'Authentication Error',
-      'VALIDATION_ERROR': 'Validation Error',
-      'DATABASE_ERROR': 'Database Error',
-      'API_ERROR': 'API Error',
-      'PERMISSION_ERROR': 'Permission Denied',
-      'NOT_FOUND': 'Not Found',
-      'TIMEOUT': 'Timeout',
-      'SYNC_ERROR': 'Sync Error',
-      'PAYMENT_ERROR': 'Payment Error',
-      'UPLOAD_ERROR': 'Upload Error'
-    }
-    return mappings[errorType] || errorType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-  }
+  // (helpers live at module scope)
 
   // Format screen name for filter dropdown
-  const formatScreenOption = (screen) => {
-    if (!screen) return 'Unknown'
-    return screen.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').replace(/\b\w/g, l => l.toUpperCase()).trim()
-  }
+  // (helpers live at module scope)
 
   // Render error details section
   const renderErrorDetails = (log) => {
@@ -440,6 +509,12 @@ export default function ErrorLogs() {
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-6">
+        {loadError && (
+          <div className="mb-6 p-4 rounded-lg border border-transparent bg-danger-soft text-danger text-sm">
+            {loadError}
+          </div>
+        )}
+
         {/* Filters Bar */}
         <div className="bg-surface rounded-lg border border-line p-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -560,7 +635,7 @@ export default function ErrorLogs() {
         )}
 
         {/* Empty State */}
-        {!loading && !logsLoading && logs.length === 0 && (
+        {!loading && !logsLoading && logs.length === 0 && !loadError && (
           <div className="bg-surface rounded-lg border border-line p-12 text-center">
             <CheckCircle className="w-12 h-12 text-green-300 mx-auto mb-4" />
             <p className="text-ink-secondary text-lg font-medium">No errors found</p>
