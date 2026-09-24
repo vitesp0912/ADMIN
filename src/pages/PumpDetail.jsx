@@ -288,6 +288,9 @@ export default function PumpDetail() {
   const [subForm, setSubForm] = useState({ plan_id: '', status: 'active' })
   const [subSaving, setSubSaving] = useState(false)
   const [subFormError, setSubFormError] = useState('')
+  const [endDateEdit, setEndDateEdit] = useState('')
+  const [endDateSaving, setEndDateSaving] = useState(false)
+  const [endDateError, setEndDateError] = useState('')
   const [noteForm, setNoteForm] = useState(emptyNoteForm)
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteDeletingId, setNoteDeletingId] = useState(null)
@@ -328,10 +331,16 @@ export default function PumpDetail() {
         plan_id: sub?.plan_id || '',
         status: sub?.status || 'active',
       })
+      setEndDateEdit(
+        sub?.end_date ? new Date(sub.end_date).toISOString().split('T')[0] : ''
+      )
+      setEndDateError('')
     } catch (error) {
       console.error('Error fetching pump subscription:', error)
       setPumpSubscription(null)
       setSubForm({ plan_id: '', status: 'active' })
+      setEndDateEdit('')
+      setEndDateError('')
     }
   }
 
@@ -377,6 +386,70 @@ export default function PumpDetail() {
     const startIso = new Date().toISOString()
     return computeSubscriptionEndDate(startIso, selectedPlanForForm)
   }, [selectedPlanForForm])
+
+  const handleSaveEndDate = async () => {
+    if (!pumpSubscription?.id) {
+      setEndDateError('No subscription to update.')
+      return
+    }
+    if (!endDateEdit) {
+      setEndDateError('Select an end date.')
+      return
+    }
+    if (!pumpSubscription.start_date) {
+      setEndDateError('Subscription has no start date.')
+      return
+    }
+
+    const start = new Date(pumpSubscription.start_date)
+    const end = new Date(`${endDateEdit}T23:59:59.999`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      setEndDateError('Invalid date.')
+      return
+    }
+    if (end.getTime() <= start.getTime()) {
+      setEndDateError('End date must be after the start date.')
+      return
+    }
+
+    const currentEnd = pumpSubscription.end_date
+      ? new Date(pumpSubscription.end_date).toISOString().split('T')[0]
+      : ''
+    if (endDateEdit === currentEnd) {
+      setEndDateError('End date is unchanged.')
+      return
+    }
+
+    setEndDateSaving(true)
+    setEndDateError('')
+    setMessage({ type: '', text: '' })
+
+    try {
+      const { error } = await db
+        .from('subscriptions')
+        .update({ end_date: end.toISOString() })
+        .eq('id', pumpSubscription.id)
+
+      if (error) throw error
+
+      await fetchPumpSubscription()
+      setMessage({
+        type: 'success',
+        text: `End date updated to ${formatISTDate(end.toISOString())}. Plan, price, and start date unchanged.`,
+      })
+      setTimeout(() => setMessage({ type: '', text: '' }), 4000)
+    } catch (error) {
+      console.error('Error updating end date:', error)
+      setEndDateError(error.message || 'Failed to update end date')
+      setMessage({
+        type: 'error',
+        text: error.message || 'Failed to update end date',
+      })
+      setTimeout(() => setMessage({ type: '', text: '' }), 6000)
+    } finally {
+      setEndDateSaving(false)
+    }
+  }
 
   const handleSaveSubscription = async () => {
     if (!id) return
@@ -3082,6 +3155,74 @@ export default function PumpDetail() {
                             ? formatISTDate(pumpSubscription.end_date)
                             : 'N/A'}
                         </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {pumpSubscription && (
+                    <div className="rounded-card border border-line bg-surface p-5 space-y-4">
+                      <div>
+                        <h4 className="text-[14px] font-semibold text-ink">Edit end date</h4>
+                        <p className="pf-meta mt-0.5">
+                          Changes only the end date. Plan, price, and start date stay the same.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                        <div>
+                          <label className="block text-xs font-medium text-ink-muted mb-1.5">
+                            START DATE (read-only)
+                          </label>
+                          <input
+                            type="text"
+                            readOnly
+                            value={
+                              pumpSubscription.start_date
+                                ? formatISTDate(pumpSubscription.start_date)
+                                : '—'
+                            }
+                            className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface-muted text-ink-secondary"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-ink-muted mb-1.5">
+                            END DATE
+                          </label>
+                          <input
+                            type="date"
+                            value={endDateEdit}
+                            min={
+                              pumpSubscription.start_date
+                                ? (() => {
+                                    const d = new Date(pumpSubscription.start_date)
+                                    d.setDate(d.getDate() + 1)
+                                    return d.toISOString().split('T')[0]
+                                  })()
+                                : undefined
+                            }
+                            onChange={(e) => {
+                              setEndDateEdit(e.target.value)
+                              setEndDateError('')
+                            }}
+                            className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {endDateError && (
+                        <p className="text-sm text-danger">{endDateError}</p>
+                      )}
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSaveEndDate}
+                          disabled={endDateSaving || !endDateEdit}
+                          className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-semibold"
+                        >
+                          <Save className="w-4 h-4" />
+                          {endDateSaving ? 'Saving…' : 'Save end date'}
+                        </button>
                       </div>
                     </div>
                   )}
