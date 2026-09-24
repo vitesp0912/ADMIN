@@ -15,6 +15,7 @@ import AuditLogs from './pages/AuditLogs'
 import ErrorLogs from './pages/ErrorLogs'
 import AuthUsersAudit from './pages/AuthUsersAudit'
 import PumpNotesAudit from './pages/PumpNotesAudit'
+import PaymentHistory from './pages/PaymentHistory'
 import Layout from './components/Layout'
 
 function ConfigMissing({ title, body }) {
@@ -127,6 +128,7 @@ VITE_SUPABASE_SERVICE_ROLE_KEY=...`}
           <Route path="error-logs" element={<ErrorLogs />} />
           <Route path="auth-users-audit" element={<AuthUsersAudit />} />
           <Route path="notes-audit" element={<PumpNotesAudit />} />
+          <Route path="payment-history" element={<PaymentHistory />} />
         </Route>
       </Routes>
     </Router>

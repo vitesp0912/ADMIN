@@ -15,6 +15,7 @@ import {
   FileText,
   AlertTriangle,
   Shield,
+  CreditCard,
   LogOut,
   Menu,
   X,
@@ -36,6 +37,7 @@ const ALL_NAV_ITEMS = [
   { path: '/error-logs', icon: AlertTriangle, label: 'Error Logs', supportOnly: true },
   { path: '/auth-users-audit', icon: Shield, label: 'Auth Users Audit', supportOnly: true },
   { path: '/notes-audit', icon: FileText, label: 'Notes Audit', supportOnly: true },
+  { path: '/payment-history', icon: CreditCard, label: 'Payment History', supportOnly: true },
 ]
 
 const PAGE_TITLES = {
@@ -51,6 +53,7 @@ const PAGE_TITLES = {
   '/error-logs': 'Error Logs',
   '/auth-users-audit': 'Auth Users Audit',
   '/notes-audit': 'Notes Audit',
+  '/payment-history': 'Payment History',
 }
 
 function getStoredTheme() {

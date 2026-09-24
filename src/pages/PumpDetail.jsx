@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useNavigate, useLocation, NavLink } from 'react-router-dom'
 import { supabase, db } from '../lib/supabase'
-import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Building2, Phone, Mail, MapPin, User, Users, Calendar, DollarSign, CheckCircle, XCircle, Settings, Save, ShoppingCart, Gauge, Receipt, Package, BookOpen, Eye, Trash2, AlertTriangle, Fuel, ClipboardList, FileText, AlertCircle, Clock, StickyNote, Pencil, Plus, X, Wallet, ArrowLeftRight, ShoppingBag, CreditCard } from 'lucide-react'
 import { formatISTDate, formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 import { isSupportAdminEmail, SUPPORT_ADMIN_EMAIL } from '../lib/authAccess'
 import PumpSignupSetup from '../components/PumpSignupSetup'
@@ -20,6 +20,7 @@ import {
   normalizeSubscriptionRow,
   subscriptionStatusTone,
 } from '../lib/subscriptions'
+import PaymentHistory from './PaymentHistory'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -462,7 +463,10 @@ export default function PumpDetail() {
   }, [])
 
   useEffect(() => {
-    if (!isSupportAdmin && (activeTab === 'subscription' || activeTab === 'actions')) {
+    if (
+      !isSupportAdmin &&
+      (activeTab === 'subscription' || activeTab === 'actions' || activeTab === 'payments')
+    ) {
       setActiveTab('details')
     }
   }, [isSupportAdmin, activeTab])
@@ -1429,6 +1433,7 @@ export default function PumpDetail() {
   const infoModules = [
     { id: 'details', label: 'Overview', icon: Building2 },
     ...(isSupportAdmin ? [{ id: 'subscription', label: 'Subscription', icon: DollarSign }] : []),
+    ...(isSupportAdmin ? [{ id: 'payments', label: 'Payments', icon: CreditCard }] : []),
     { id: 'management', label: 'Management', icon: Settings },
     ...(isSupportAdmin ? [{ id: 'actions', label: 'Actions', icon: AlertTriangle }] : []),
   ]
@@ -3180,6 +3185,11 @@ export default function PumpDetail() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Payments Tab */}
+              {isSupportAdmin && activeTab === 'payments' && id && (
+                <PaymentHistory pumpId={id} embedded />
               )}
 
               {/* Management Tab */}

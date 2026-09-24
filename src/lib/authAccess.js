@@ -16,6 +16,7 @@ export const SUPPORT_ONLY_PATHS = [
   '/error-logs',
   '/auth-users-audit',
   '/notes-audit',
+  '/payment-history',
 ]
 
 export function isSupportOnlyPath(pathname) {
