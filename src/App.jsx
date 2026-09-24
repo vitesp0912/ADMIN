@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { supabase, hasAdminServiceRole } from './lib/supabase'
+import { supabase, hasAdminServiceRole, hasSupabaseAuthConfig } from './lib/supabase'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Pumps from './pages/Pumps'
@@ -17,11 +17,27 @@ import AuthUsersAudit from './pages/AuthUsersAudit'
 import PumpNotesAudit from './pages/PumpNotesAudit'
 import Layout from './components/Layout'
 
+function ConfigMissing({ title, body }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-surface-muted">
+      <div className="max-w-lg w-full bg-surface border border-line rounded-card p-6 shadow-soft">
+        <h1 className="text-lg font-semibold text-ink mb-2">{title}</h1>
+        <p className="text-sm text-ink-secondary whitespace-pre-wrap">{body}</p>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
@@ -35,6 +51,23 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  if (!hasSupabaseAuthConfig) {
+    return (
+      <ConfigMissing
+        title="Supabase env missing"
+        body={`Your local .env is empty or incomplete.
+
+Add these to .env (or .env.local), then restart npm run dev:
+
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+
+For admin data after RLS, also set on Vercel (not required in local .env if you only test production):
+VITE_SUPABASE_SERVICE_ROLE_KEY=...`}
+      />
+    )
+  }
 
   if (loading) {
     return (
@@ -54,6 +87,7 @@ function App() {
           </p>
           <p className="text-sm text-ink-secondary font-mono bg-surface-muted rounded-control px-3 py-2">
             Set VITE_SUPABASE_SERVICE_ROLE_KEY in Vercel (or GitHub) environment variables, then redeploy / rebuild.
+            For local testing you can put it in gitignored .env.local.
           </p>
           <button
             type="button"

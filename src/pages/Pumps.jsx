@@ -4,6 +4,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Building2, CheckCircle, XCircle, Gauge, Phone, ArrowUpDown } from 'lucide-react'
 import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
 import { comparePumpState, getPumpStateMeta, getPumpStateSelectClass, PUMP_STATES } from '../lib/pumpState'
+import StatusPill from '../components/ui/StatusPill'
+import {
+  SUBSCRIPTION_SELECT,
+  formatPlanName,
+  formatPlanMeta,
+  formatSubscriptionStatus,
+  normalizeSubscriptionRow,
+  subscriptionStatusTone,
+} from '../lib/subscriptions'
 
 const VALID_STATUS = new Set(['active', 'pending', 'rejected'])
 const LIST_UI_KEY = 'petrofi.pumpsList.ui'
@@ -34,6 +43,7 @@ export default function Pumps() {
   const [pumps, setPumps] = useState([])
   const [meterReadings, setMeterReadings] = useState({})
   const [lastActivity, setLastActivity] = useState({})
+  const [subscriptionsByPump, setSubscriptionsByPump] = useState({})
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(null)
   const [stateUpdatingId, setStateUpdatingId] = useState(null)
@@ -128,14 +138,37 @@ export default function Pumps() {
         const pumpIds = data.map((p) => p.id)
         fetchMeterReadingsForPumps(pumpIds)
         fetchLastActivityForPumps(pumpIds)
+        fetchSubscriptionsForPumps(pumpIds)
       } else {
         setMeterReadings({})
         setLastActivity({})
+        setSubscriptionsByPump({})
       }
     } catch (error) {
       console.error('Error fetching pumps:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchSubscriptionsForPumps = async (pumpIds) => {
+    try {
+      const { data, error } = await db
+        .from('subscriptions')
+        .select(SUBSCRIPTION_SELECT)
+        .in('pump_id', pumpIds)
+
+      if (error) throw error
+
+      const map = {}
+      ;(data || []).forEach((row) => {
+        const sub = normalizeSubscriptionRow(row)
+        if (sub?.pump_id) map[sub.pump_id] = sub
+      })
+      setSubscriptionsByPump(map)
+    } catch (error) {
+      console.error('Error fetching subscriptions:', error)
+      setSubscriptionsByPump({})
     }
   }
 
@@ -451,6 +484,7 @@ export default function Pumps() {
                   <th className="w-36">Phone</th>
                   <th className="w-28">Owner</th>
                   <th className="w-44">State</th>
+                  <th className="w-40">Plan</th>
                   <th className="w-36">Meter Readings</th>
                   <th>Last Activity</th>
                 </tr>
@@ -508,6 +542,31 @@ export default function Pumps() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="px-4 py-3 min-w-0">
+                      {(() => {
+                        const sub = subscriptionsByPump[pump.id]
+                        if (!sub) {
+                          return <span className="text-[13px] text-ink-muted">No subscription</span>
+                        }
+                        return (
+                          <div className="min-w-0">
+                            <div className="text-[13px] font-medium text-ink truncate">
+                              {formatPlanName(sub.plan)}
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 flex-wrap">
+                              <StatusPill tone={subscriptionStatusTone(sub.status)}>
+                                {formatSubscriptionStatus(sub.status)}
+                              </StatusPill>
+                              {formatPlanMeta(sub.plan) && (
+                                <span className="text-[11px] text-ink-muted truncate">
+                                  {formatPlanMeta(sub.plan)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="whitespace-nowrap">
                       {meterReadings[pump.id] ? (

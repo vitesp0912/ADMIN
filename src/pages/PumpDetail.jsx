@@ -8,6 +8,18 @@ import PumpSignupSetup from '../components/PumpSignupSetup'
 import StatusPill from '../components/ui/StatusPill'
 import { Skeleton } from '../components/ui/Skeleton'
 import EmptyState from '../components/ui/EmptyState'
+import {
+  SUBSCRIPTION_SELECT,
+  SUBSCRIPTION_STATUSES,
+  PLANS_SELECT,
+  computeSubscriptionEndDate,
+  formatPlanMeta,
+  formatPlanName,
+  formatSubscriptionRange,
+  formatSubscriptionStatus,
+  normalizeSubscriptionRow,
+  subscriptionStatusTone,
+} from '../lib/subscriptions'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -270,6 +282,11 @@ export default function PumpDetail() {
   const [auditLogsTotal, setAuditLogsTotal] = useState(0)
   const [errorLogs, setErrorLogs] = useState([])
   const [pumpNotes, setPumpNotes] = useState([])
+  const [pumpSubscription, setPumpSubscription] = useState(null)
+  const [availablePlans, setAvailablePlans] = useState([])
+  const [subForm, setSubForm] = useState({ plan_id: '', status: 'active' })
+  const [subSaving, setSubSaving] = useState(false)
+  const [subFormError, setSubFormError] = useState('')
   const [noteForm, setNoteForm] = useState(emptyNoteForm)
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteDeletingId, setNoteDeletingId] = useState(null)
@@ -290,8 +307,146 @@ export default function PumpDetail() {
 
   useEffect(() => {
     fetchPumpDetails()
+    fetchPumpSubscription()
     fetchPumpUsers()
   }, [id])
+
+  const fetchPumpSubscription = async () => {
+    if (!id) return
+    try {
+      const { data, error } = await db
+        .from('subscriptions')
+        .select(SUBSCRIPTION_SELECT)
+        .eq('pump_id', id)
+        .maybeSingle()
+
+      if (error) throw error
+      const sub = normalizeSubscriptionRow(data)
+      setPumpSubscription(sub)
+      setSubForm({
+        plan_id: sub?.plan_id || '',
+        status: sub?.status || 'active',
+      })
+    } catch (error) {
+      console.error('Error fetching pump subscription:', error)
+      setPumpSubscription(null)
+      setSubForm({ plan_id: '', status: 'active' })
+    }
+  }
+
+  const fetchAvailablePlans = async () => {
+    try {
+      const { data, error } = await db
+        .from('plans')
+        .select(PLANS_SELECT)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+
+      if (error) throw error
+      let plans = data || []
+
+      // Keep current plan selectable even if it was deactivated
+      if (
+        pumpSubscription?.plan &&
+        !plans.some((p) => p.id === pumpSubscription.plan.id)
+      ) {
+        plans = [pumpSubscription.plan, ...plans]
+      }
+
+      setAvailablePlans(plans)
+    } catch (error) {
+      console.error('Error fetching plans:', error)
+      setAvailablePlans([])
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'subscription' && isSupportAdmin) {
+      fetchAvailablePlans()
+    }
+  }, [activeTab, isSupportAdmin])
+
+  const selectedPlanForForm = useMemo(
+    () => availablePlans.find((p) => p.id === subForm.plan_id) || null,
+    [availablePlans, subForm.plan_id]
+  )
+
+  const previewEndDate = useMemo(() => {
+    if (!selectedPlanForForm) return null
+    const startIso = new Date().toISOString()
+    return computeSubscriptionEndDate(startIso, selectedPlanForForm)
+  }, [selectedPlanForForm])
+
+  const handleSaveSubscription = async () => {
+    if (!id) return
+    if (!subForm.plan_id) {
+      setSubFormError('Select a plan.')
+      return
+    }
+
+    const plan =
+      availablePlans.find((p) => p.id === subForm.plan_id) ||
+      pumpSubscription?.plan ||
+      null
+    if (!plan) {
+      setSubFormError('Selected plan was not found.')
+      return
+    }
+
+    const startIso = new Date().toISOString()
+    const endIso = computeSubscriptionEndDate(startIso, plan)
+    if (!endIso) {
+      setSubFormError('Could not compute end date for this plan.')
+      return
+    }
+
+    const status = SUBSCRIPTION_STATUSES.includes(subForm.status)
+      ? subForm.status
+      : 'active'
+
+    setSubSaving(true)
+    setSubFormError('')
+    setMessage({ type: '', text: '' })
+
+    try {
+      const payload = {
+        pump_id: id,
+        plan_id: subForm.plan_id,
+        status,
+        start_date: startIso,
+        end_date: endIso,
+      }
+
+      let error
+      if (pumpSubscription?.id) {
+        ;({ error } = await db
+          .from('subscriptions')
+          .update(payload)
+          .eq('id', pumpSubscription.id))
+      } else {
+        ;({ error } = await db.from('subscriptions').insert(payload))
+      }
+
+      if (error) throw error
+
+      await fetchPumpSubscription()
+      setMessage({
+        type: 'success',
+        text: `Subscription updated to ${formatPlanName(plan)} (no payment order). Ends ${formatISTDate(endIso)}.`,
+      })
+      setTimeout(() => setMessage({ type: '', text: '' }), 4000)
+    } catch (error) {
+      console.error('Error saving subscription:', error)
+      setSubFormError(error.message || 'Failed to update subscription')
+      setMessage({
+        type: 'error',
+        text: error.message || 'Failed to update subscription',
+      })
+      setTimeout(() => setMessage({ type: '', text: '' }), 6000)
+    } finally {
+      setSubSaving(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -1075,6 +1230,7 @@ export default function PumpDetail() {
 
       setTimeout(() => setMessage({ type: '', text: '' }), 3000)
       fetchPumpDetails()
+      fetchPumpSubscription()
     } catch (error) {
       console.error('Error updating pump:', error)
       const errorMessage = error.message || error.details || error.hint || 'Failed to update pump details. Check console for details.'
@@ -1405,11 +1561,18 @@ export default function PumpDetail() {
               </div>
               <div className="pf-stat-cell">
                 <p className="pf-label">Subscription</p>
-                <p className="text-[16px] font-semibold text-ink mt-1.5 capitalize">
-                  {pump.subscription_status || '—'}
-                </p>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <p className="text-[16px] font-semibold text-ink">
+                    {formatPlanName(pumpSubscription?.plan)}
+                  </p>
+                  <StatusPill tone={subscriptionStatusTone(pumpSubscription?.status)}>
+                    {formatSubscriptionStatus(pumpSubscription?.status)}
+                  </StatusPill>
+                </div>
                 <p className="pf-meta mt-1">
-                  {pump.subscription_plan ? toTitleCase(pump.subscription_plan) : 'No plan'}
+                  {formatPlanMeta(pumpSubscription?.plan) ||
+                    formatSubscriptionRange(pumpSubscription) ||
+                    'From subscriptions table'}
                 </p>
               </div>
               <div className="pf-stat-cell">
@@ -2711,8 +2874,13 @@ export default function PumpDetail() {
                     </div>
                     <div className="rounded-control border border-line bg-surface-muted/40 p-4">
                       <p className="pf-label">Subscription</p>
-                      <p className="text-[13px] font-semibold text-ink mt-2 capitalize">
-                        {pump.subscription_status || '—'}
+                      <div className="mt-2">
+                        <StatusPill tone={subscriptionStatusTone(pumpSubscription?.status)}>
+                          {formatSubscriptionStatus(pumpSubscription?.status)}
+                        </StatusPill>
+                      </div>
+                      <p className="text-[12px] text-ink-secondary mt-2 truncate">
+                        {formatPlanName(pumpSubscription?.plan)}
                       </p>
                     </div>
                   </div>
@@ -2836,55 +3004,179 @@ export default function PumpDetail() {
 
               {/* Subscription Tab */}
               {isSupportAdmin && activeTab === 'subscription' && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div>
                     <h3 className="text-[15px] font-semibold text-ink">Subscription details</h3>
-                    <p className="pf-meta mt-0.5">Plan, billing, and renewal information</p>
+                    <p className="pf-meta mt-0.5">
+                      Live plan and status from the subscriptions table
+                    </p>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <div className="rounded-card border border-line p-4 bg-surface">
-                      <p className="pf-label">Plan</p>
-                      <p className="text-[18px] font-semibold text-ink mt-2">
-                        {pump.subscription_plan ? toTitleCase(pump.subscription_plan) : 'N/A'}
-                      </p>
-                    </div>
-                    <div className="rounded-card border border-line p-4 bg-surface">
-                      <p className="pf-label">Status</p>
-                      <div className="mt-2">
-                        <StatusPill
-                          tone={
-                            pump.subscription_status === 'active'
-                              ? 'ok'
-                              : pump.subscription_status === 'pending'
-                                ? 'warn'
-                                : 'neutral'
-                          }
-                        >
-                          {pump.subscription_status ? toTitleCase(pump.subscription_status) : 'N/A'}
-                        </StatusPill>
+
+                  {!pumpSubscription ? (
+                    <EmptyState
+                      title="No subscription"
+                      description="Assign a plan below to create one (no payment order)."
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="rounded-card border border-line p-4 bg-surface">
+                        <p className="pf-label">Plan</p>
+                        <p className="text-[18px] font-semibold text-ink mt-2">
+                          {formatPlanName(pumpSubscription.plan)}
+                        </p>
+                        {pumpSubscription.plan?.code && (
+                          <p className="pf-meta mt-1 font-mono">{pumpSubscription.plan.code}</p>
+                        )}
+                      </div>
+                      <div className="rounded-card border border-line p-4 bg-surface">
+                        <p className="pf-label">Status</p>
+                        <div className="mt-2">
+                          <StatusPill tone={subscriptionStatusTone(pumpSubscription.status)}>
+                            {formatSubscriptionStatus(pumpSubscription.status)}
+                          </StatusPill>
+                        </div>
+                      </div>
+                      <div className="rounded-card border border-line p-4 bg-surface">
+                        <p className="pf-label">Duration</p>
+                        <p className="text-[18px] font-semibold text-ink mt-2">
+                          {pumpSubscription.plan?.duration_months
+                            ? `${pumpSubscription.plan.duration_months} months`
+                            : pumpSubscription.plan?.duration_days
+                              ? `${pumpSubscription.plan.duration_days} days`
+                              : 'N/A'}
+                        </p>
+                      </div>
+                      <div className="rounded-card border border-line p-4 bg-surface">
+                        <p className="pf-label">Price (incl. GST)</p>
+                        <p className="text-[18px] font-semibold text-ink mt-2">
+                          {pumpSubscription.plan?.price_total_inr != null
+                            ? formatInr(pumpSubscription.plan.price_total_inr)
+                            : 'N/A'}
+                        </p>
+                        {pumpSubscription.plan?.price_base_inr != null && (
+                          <p className="pf-meta mt-1">
+                            Base {formatInr(pumpSubscription.plan.price_base_inr)}
+                            {pumpSubscription.plan.gst_rate != null
+                              ? ` · GST ${pumpSubscription.plan.gst_rate}%`
+                              : ''}
+                          </p>
+                        )}
+                      </div>
+                      <div className="rounded-card border border-line p-4 bg-surface">
+                        <p className="pf-label">Start date</p>
+                        <p className="text-[15px] font-semibold text-ink mt-2">
+                          {pumpSubscription.start_date
+                            ? formatISTDate(pumpSubscription.start_date)
+                            : 'N/A'}
+                        </p>
+                      </div>
+                      <div className="rounded-card border border-line p-4 bg-surface">
+                        <p className="pf-label">End date</p>
+                        <p className="text-[15px] font-semibold text-ink mt-2">
+                          {pumpSubscription.end_date
+                            ? formatISTDate(pumpSubscription.end_date)
+                            : 'N/A'}
+                        </p>
                       </div>
                     </div>
-                    <div className="rounded-card border border-line p-4 bg-surface">
-                      <p className="pf-label">Billing cycle</p>
-                      <p className="text-[18px] font-semibold text-ink mt-2">
-                        {pump.billing_cycle ? toTitleCase(pump.billing_cycle) : 'N/A'}
+                  )}
+
+                  <div className="rounded-card border border-line bg-surface p-5 space-y-4">
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-ink">
+                        {pumpSubscription ? 'Change subscription' : 'Assign subscription'}
+                      </h4>
+                      <p className="pf-meta mt-0.5">
+                        Admin override — no payment order. Start date resets to now; end date follows the plan duration.
                       </p>
                     </div>
-                    <div className="rounded-card border border-line p-4 bg-surface">
-                      <p className="pf-label">Start date</p>
-                      <p className="text-[15px] font-semibold text-ink mt-2">
-                        {pump.subscription_start_date
-                          ? formatISTDate(pump.subscription_start_date)
-                          : 'N/A'}
-                      </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-ink-muted mb-1.5">
+                          PLAN
+                        </label>
+                        <select
+                          value={subForm.plan_id}
+                          onChange={(e) =>
+                            setSubForm((prev) => ({ ...prev, plan_id: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">Select a plan…</option>
+                          {availablePlans.map((plan) => (
+                            <option key={plan.id} value={plan.id}>
+                              {plan.name}
+                              {plan.duration_months ? ` · ${plan.duration_months} mo` : ''}
+                              {plan.price_total_inr != null
+                                ? ` · ${formatInr(plan.price_total_inr)}`
+                                : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {availablePlans.length === 0 && (
+                          <p className="text-xs text-ink-muted mt-1.5">
+                            No active plans found in the plans table.
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-ink-muted mb-1.5">
+                          STATUS
+                        </label>
+                        <select
+                          value={subForm.status}
+                          onChange={(e) =>
+                            setSubForm((prev) => ({ ...prev, status: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          {SUBSCRIPTION_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {formatSubscriptionStatus(status)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <div className="rounded-card border border-line p-4 bg-surface">
-                      <p className="pf-label">End date</p>
-                      <p className="text-[15px] font-semibold text-ink mt-2">
-                        {pump.subscription_end_date
-                          ? formatISTDate(pump.subscription_end_date)
-                          : 'N/A'}
-                      </p>
+
+                    {selectedPlanForForm && (
+                      <div className="rounded-control border border-line bg-surface-muted/50 px-3 py-2.5 text-sm text-ink-secondary">
+                        New period:{' '}
+                        <span className="font-medium text-ink">
+                          {formatISTDate(new Date().toISOString())}
+                        </span>
+                        {' → '}
+                        <span className="font-medium text-ink">
+                          {previewEndDate ? formatISTDate(previewEndDate) : '—'}
+                        </span>
+                        {selectedPlanForForm.duration_days
+                          ? ` (${selectedPlanForForm.duration_days} days)`
+                          : selectedPlanForForm.duration_months
+                            ? ` (${selectedPlanForForm.duration_months} months)`
+                            : ''}
+                      </div>
+                    )}
+
+                    {subFormError && (
+                      <p className="text-sm text-danger">{subFormError}</p>
+                    )}
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleSaveSubscription}
+                        disabled={subSaving || !subForm.plan_id}
+                        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-semibold"
+                      >
+                        <Save className="w-4 h-4" />
+                        {subSaving
+                          ? 'Saving…'
+                          : pumpSubscription
+                            ? 'Update subscription'
+                            : 'Create subscription'}
+                      </button>
                     </div>
                   </div>
                 </div>
