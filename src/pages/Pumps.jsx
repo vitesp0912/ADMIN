@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { supabase, db } from '../lib/supabase'
+import { db } from '../lib/supabase'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Building2, CheckCircle, XCircle, Gauge, Phone, ArrowUpDown } from 'lucide-react'
 import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
@@ -246,19 +246,11 @@ export default function Pumps() {
     e.stopPropagation()
     setUpdating(pumpId)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      // Update pump status
       const { error } = await db
         .from('pumps')
         .update({
           registration_status: 'approved',
-          subscription_status: 'active',
           is_active: true,
-          payment_verified: true,
-          payment_verified_at: new Date().toISOString(),
-          payment_verified_by: user?.id || null,
-          subscription_start_date: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', pumpId)

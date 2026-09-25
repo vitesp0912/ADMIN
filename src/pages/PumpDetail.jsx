@@ -301,12 +301,6 @@ export default function PumpDetail() {
   const [formData, setFormData] = useState({
     is_active: false,
     registration_status: 'pending',
-    payment_verified: false,
-    subscription_status: 'pending',
-    subscription_plan: 'basic',
-    subscription_start_date: '',
-    subscription_end_date: '',
-    billing_cycle: 'monthly',
   })
 
   useEffect(() => {
@@ -570,16 +564,6 @@ export default function PumpDetail() {
       setFormData({
         is_active: data.is_active || false,
         registration_status: data.registration_status || 'pending',
-        payment_verified: data.payment_verified || false,
-        subscription_status: data.subscription_status || 'pending',
-        subscription_plan: data.subscription_plan || 'basic',
-        subscription_start_date: data.subscription_start_date 
-          ? new Date(data.subscription_start_date).toISOString().split('T')[0]
-          : '',
-        subscription_end_date: data.subscription_end_date
-          ? new Date(data.subscription_end_date).toISOString().split('T')[0]
-          : '',
-        billing_cycle: data.billing_cycle || 'monthly',
       })
     } catch (error) {
       console.error('Error fetching pump details:', error)
@@ -1225,25 +1209,7 @@ export default function PumpDetail() {
       const updateData = {
         is_active: dataToSave.is_active,
         registration_status: dataToSave.registration_status,
-        payment_verified: dataToSave.payment_verified,
-        subscription_status: dataToSave.subscription_status,
-        subscription_plan: dataToSave.subscription_plan,
-        billing_cycle: dataToSave.billing_cycle,
         updated_at: new Date().toISOString(),
-      }
-
-      // Set payment verification details if being verified
-      if (dataToSave.payment_verified && !pump.payment_verified) {
-        updateData.payment_verified_at = new Date().toISOString()
-        updateData.payment_verified_by = user?.id || null
-      }
-
-      // Set subscription dates
-      if (dataToSave.subscription_start_date) {
-        updateData.subscription_start_date = new Date(dataToSave.subscription_start_date).toISOString()
-      }
-      if (dataToSave.subscription_end_date) {
-        updateData.subscription_end_date = new Date(dataToSave.subscription_end_date).toISOString()
       }
 
       console.log('Updating pump with data:', updateData)
@@ -1326,9 +1292,6 @@ export default function PumpDetail() {
       ...formData,
       is_active: true,
       registration_status: 'approved',
-      payment_verified: true,
-      subscription_status: 'active',
-      subscription_start_date: formData.subscription_start_date || new Date().toISOString().split('T')[0],
     }
 
     setFormData(approvedFormData)
@@ -1340,8 +1303,6 @@ export default function PumpDetail() {
       ...formData,
       is_active: false,
       registration_status: 'pending',
-      payment_verified: false,
-      subscription_status: 'pending',
     }
 
     setFormData(pendingFormData)
@@ -1353,7 +1314,6 @@ export default function PumpDetail() {
       ...formData,
       is_active: false,
       registration_status: 'rejected',
-      subscription_status: 'pending',
     }
 
     setFormData(rejectedFormData)
@@ -2917,7 +2877,7 @@ export default function PumpDetail() {
               {/* Details / Overview modules */}
               {activeTab === 'details' && (
                 <div className="space-y-5">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                     <div className="rounded-control border border-line bg-surface-muted/40 p-4">
                       <p className="pf-label">Account</p>
                       <div className="mt-2">
@@ -2939,14 +2899,6 @@ export default function PumpDetail() {
                           }
                         >
                           {pump.registration_status || 'N/A'}
-                        </StatusPill>
-                      </div>
-                    </div>
-                    <div className="rounded-control border border-line bg-surface-muted/40 p-4">
-                      <p className="pf-label">Payment</p>
-                      <div className="mt-2">
-                        <StatusPill tone={pump.payment_verified ? 'ok' : 'danger'}>
-                          {pump.payment_verified ? 'Verified' : 'Unverified'}
                         </StatusPill>
                       </div>
                     </div>
@@ -3051,7 +3003,7 @@ export default function PumpDetail() {
                         <Calendar className="w-4 h-4 text-ink-muted" />
                         <h3 className="text-[13px] font-semibold text-ink">Registration & activity</h3>
                       </div>
-                      <dl className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-line">
+                      <dl className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-line">
                         <div className="px-4 py-3">
                           <dt className="text-[11px] text-ink-muted">Created at</dt>
                           <dd className="text-[13px] font-medium text-ink mt-0.5">
@@ -3064,14 +3016,6 @@ export default function PumpDetail() {
                             {pump.last_active_at
                               ? formatISTDateTime(pump.last_active_at)
                               : 'Never'}
-                          </dd>
-                        </div>
-                        <div className="px-4 py-3">
-                          <dt className="text-[11px] text-ink-muted">Payment verified on</dt>
-                          <dd className="text-[13px] font-medium text-ink mt-0.5">
-                            {pump.payment_verified_at
-                              ? formatISTDate(pump.payment_verified_at)
-                              : '—'}
                           </dd>
                         </div>
                       </dl>
@@ -3405,92 +3349,6 @@ export default function PumpDetail() {
                     </select>
                   </div>
 
-                  {/* Payment Verified */}
-                  <div className="p-5 border-2 border-line rounded-xl bg-surface hover:border-blue-300 hover:shadow-md transition-all">
-                    <label className="flex items-center justify-between mb-3">
-                      <span className="font-bold text-ink">Payment Verified</span>
-                      <button
-                        onClick={() => setFormData({ ...formData, payment_verified: !formData.payment_verified })}
-                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-200 shadow-inner ${
-                          formData.payment_verified ? 'bg-green-500' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-5 w-5 transform rounded-full bg-surface shadow-md transition-transform duration-200 ${
-                            formData.payment_verified ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </label>
-                    <p className="text-sm text-ink-secondary font-medium">
-                      {formData.payment_verified ? '✓ Payment has been verified' : '✗ Payment not verified'}
-                    </p>
-                  </div>
-
-                  {/* Subscription Status */}
-                  <div className="p-4 border border-line rounded-lg">
-                    <label className="block font-medium text-ink-secondary mb-2">Subscription Status</label>
-                    <select
-                      value={formData.subscription_status}
-                      onChange={(e) => setFormData({ ...formData, subscription_status: e.target.value })}
-                      className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="active">Active</option>
-                      <option value="suspended">Suspended</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
-
-                  {/* Subscription Plan */}
-                  <div className="p-4 border border-line rounded-lg">
-                    <label className="block font-medium text-ink-secondary mb-2">Subscription Plan</label>
-                    <select
-                      value={formData.subscription_plan}
-                      onChange={(e) => setFormData({ ...formData, subscription_plan: e.target.value })}
-                      className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="basic">Basic</option>
-                      <option value="premium">Premium</option>
-                      <option value="enterprise">Enterprise</option>
-                    </select>
-                  </div>
-
-                  {/* Billing Cycle */}
-                  <div className="p-4 border border-line rounded-lg">
-                    <label className="block font-medium text-ink-secondary mb-2">Billing Cycle</label>
-                    <select
-                      value={formData.billing_cycle}
-                      onChange={(e) => setFormData({ ...formData, billing_cycle: e.target.value })}
-                      className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="monthly">Monthly</option>
-                      <option value="quarterly">Quarterly</option>
-                      <option value="yearly">Yearly</option>
-                    </select>
-                  </div>
-
-                  {/* Subscription Start Date */}
-                  <div className="p-4 border border-line rounded-lg">
-                    <label className="block font-medium text-ink-secondary mb-2">Subscription Start Date</label>
-                    <input
-                      type="date"
-                      value={formData.subscription_start_date}
-                      onChange={(e) => setFormData({ ...formData, subscription_start_date: e.target.value })}
-                      className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  {/* Subscription End Date */}
-                  <div className="p-4 border border-line rounded-lg">
-                    <label className="block font-medium text-ink-secondary mb-2">Subscription End Date</label>
-                    <input
-                      type="date"
-                      value={formData.subscription_end_date}
-                      onChange={(e) => setFormData({ ...formData, subscription_end_date: e.target.value })}
-                      className="w-full px-3 py-2 border border-line-strong rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
                 </div>
 
                 {/* Save Button */}
