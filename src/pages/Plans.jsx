@@ -16,7 +16,6 @@ const emptyForm = {
   gst_rate: '18',
   currency: 'INR',
   is_active: true,
-  sort_order: '0',
 }
 
 function roundMoney(value) {
@@ -57,11 +56,9 @@ function validatePlan(form, plans) {
 
   const price = toNumber(form.price_base_inr)
   const gstRate = toNumber(form.gst_rate)
-  const sortOrder = Number(form.sort_order)
   if (!Number.isFinite(price) || price < 0) return 'Base price must be 0 or more.'
   if (!Number.isFinite(gstRate) || gstRate < 0) return 'GST rate must be 0 or more.'
   if (!form.currency.trim()) return 'Currency is required.'
-  if (!Number.isInteger(sortOrder)) return 'Sort order must be a whole number.'
 
   return ''
 }
@@ -123,7 +120,6 @@ export default function Plans() {
       gst_rate: plan.gst_rate == null ? '18' : String(plan.gst_rate),
       currency: plan.currency || 'INR',
       is_active: Boolean(plan.is_active),
-      sort_order: String(plan.sort_order ?? 0),
     })
     setFormError('')
     setModalOpen(true)
@@ -151,7 +147,6 @@ export default function Plans() {
       gst_rate: roundMoney(form.gst_rate),
       currency: form.currency.trim() || 'INR',
       is_active: Boolean(form.is_active),
-      sort_order: Number(form.sort_order),
     }
 
     setSaving(true)
@@ -386,16 +381,6 @@ export default function Plans() {
                     type="text"
                     value={form.currency}
                     onChange={(e) => setField('currency', e.target.value)}
-                    className="w-full px-3 py-2 border border-line rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink-muted mb-1.5">SORT ORDER</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={form.sort_order}
-                    onChange={(e) => setField('sort_order', e.target.value)}
                     className="w-full px-3 py-2 border border-line rounded-lg text-sm"
                   />
                 </div>
