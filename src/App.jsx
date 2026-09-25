@@ -16,6 +16,7 @@ import ErrorLogs from './pages/ErrorLogs'
 import AuthUsersAudit from './pages/AuthUsersAudit'
 import PumpNotesAudit from './pages/PumpNotesAudit'
 import PaymentHistory from './pages/PaymentHistory'
+import Plans from './pages/Plans'
 import Layout from './components/Layout'
 
 function ConfigMissing({ title, body }) {
@@ -114,6 +115,7 @@ VITE_SUPABASE_SERVICE_ROLE_KEY=...`}
           element={user ? <Layout /> : <Navigate to="/login" />}
         >
           <Route index element={<Dashboard />} />
+          <Route path="plans" element={<Plans />} />
           <Route path="pumps" element={<Pumps />} />
           <Route path="pumps/:id" element={<PumpDetail />} />
           <Route path="pumps/:id/information" element={<PumpDetail />} />

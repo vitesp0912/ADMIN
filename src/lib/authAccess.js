@@ -7,6 +7,7 @@ export function isSupportAdminEmail(email) {
 
 /** Sidebar / route paths hidden from non-support admins */
 export const SUPPORT_ONLY_PATHS = [
+  '/plans',
   '/users',
   '/sales',
   '/expenses',

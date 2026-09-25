@@ -5,6 +5,7 @@ import { isSupportAdminEmail, SUPPORT_ONLY_PATHS } from '../lib/authAccess'
 import PasswordResetBell from './PasswordResetBell'
 import {
   LayoutDashboard,
+  Layers,
   Building2,
   Users,
   ShoppingCart,
@@ -26,6 +27,7 @@ import {
 
 const ALL_NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/plans', icon: Layers, label: 'Plans', supportOnly: true },
   { path: '/pumps', icon: Building2, label: 'Pumps' },
   { path: '/users', icon: Users, label: 'Users', supportOnly: true },
   { path: '/sales', icon: ShoppingCart, label: 'Sales', supportOnly: true },
@@ -42,6 +44,7 @@ const ALL_NAV_ITEMS = [
 
 const PAGE_TITLES = {
   '/': 'Dashboard',
+  '/plans': 'Plans',
   '/pumps': 'Pumps',
   '/users': 'Users',
   '/sales': 'Sales',
