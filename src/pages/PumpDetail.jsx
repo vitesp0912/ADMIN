@@ -11,8 +11,6 @@ import EmptyState from '../components/ui/EmptyState'
 import {
   SUBSCRIPTION_SELECT,
   SUBSCRIPTION_STATUSES,
-  PLANS_SELECT,
-  computeSubscriptionEndDate,
   formatPlanMeta,
   formatPlanName,
   formatSubscriptionRange,
@@ -284,8 +282,7 @@ export default function PumpDetail() {
   const [errorLogs, setErrorLogs] = useState([])
   const [pumpNotes, setPumpNotes] = useState([])
   const [pumpSubscription, setPumpSubscription] = useState(null)
-  const [availablePlans, setAvailablePlans] = useState([])
-  const [subForm, setSubForm] = useState({ plan_id: '', status: 'active' })
+  const [subStatus, setSubStatus] = useState('active')
   const [subSaving, setSubSaving] = useState(false)
   const [subFormError, setSubFormError] = useState('')
   const [endDateEdit, setEndDateEdit] = useState('')
@@ -321,10 +318,7 @@ export default function PumpDetail() {
       if (error) throw error
       const sub = normalizeSubscriptionRow(data)
       setPumpSubscription(sub)
-      setSubForm({
-        plan_id: sub?.plan_id || '',
-        status: sub?.status || 'active',
-      })
+      setSubStatus(sub?.status || 'active')
       setEndDateEdit(
         sub?.end_date ? new Date(sub.end_date).toISOString().split('T')[0] : ''
       )
@@ -332,54 +326,11 @@ export default function PumpDetail() {
     } catch (error) {
       console.error('Error fetching pump subscription:', error)
       setPumpSubscription(null)
-      setSubForm({ plan_id: '', status: 'active' })
+      setSubStatus('active')
       setEndDateEdit('')
       setEndDateError('')
     }
   }
-
-  const fetchAvailablePlans = async () => {
-    try {
-      const { data, error } = await db
-        .from('plans')
-        .select(PLANS_SELECT)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-
-      if (error) throw error
-      let plans = data || []
-
-      // Keep current plan selectable even if it was deactivated
-      if (
-        pumpSubscription?.plan &&
-        !plans.some((p) => p.id === pumpSubscription.plan.id)
-      ) {
-        plans = [pumpSubscription.plan, ...plans]
-      }
-
-      setAvailablePlans(plans)
-    } catch (error) {
-      console.error('Error fetching plans:', error)
-      setAvailablePlans([])
-    }
-  }
-
-  useEffect(() => {
-    if (activeTab === 'subscription' && isSupportAdmin) {
-      fetchAvailablePlans()
-    }
-  }, [activeTab, isSupportAdmin])
-
-  const selectedPlanForForm = useMemo(
-    () => availablePlans.find((p) => p.id === subForm.plan_id) || null,
-    [availablePlans, subForm.plan_id]
-  )
-
-  const previewEndDate = useMemo(() => {
-    if (!selectedPlanForForm) return null
-    const startIso = new Date().toISOString()
-    return computeSubscriptionEndDate(startIso, selectedPlanForForm)
-  }, [selectedPlanForForm])
 
   const handleSaveEndDate = async () => {
     if (!pumpSubscription?.id) {
@@ -429,7 +380,7 @@ export default function PumpDetail() {
       await fetchPumpSubscription()
       setMessage({
         type: 'success',
-        text: `End date updated to ${formatISTDate(end.toISOString())}. Plan, price, and start date unchanged.`,
+        text: `End date updated to ${formatISTDate(end.toISOString())}. Plan and status unchanged.`,
       })
       setTimeout(() => setMessage({ type: '', text: '' }), 4000)
     } catch (error) {
@@ -446,69 +397,41 @@ export default function PumpDetail() {
   }
 
   const handleSaveSubscription = async () => {
-    if (!id) return
-    if (!subForm.plan_id) {
-      setSubFormError('Select a plan.')
+    if (!pumpSubscription?.id) {
+      setSubFormError('No subscription to update.')
       return
     }
 
-    const plan =
-      availablePlans.find((p) => p.id === subForm.plan_id) ||
-      pumpSubscription?.plan ||
-      null
-    if (!plan) {
-      setSubFormError('Selected plan was not found.')
+    const status = SUBSCRIPTION_STATUSES.includes(subStatus) ? subStatus : 'active'
+    if (status === pumpSubscription.status) {
+      setSubFormError('Status is unchanged.')
       return
     }
-
-    const startIso = new Date().toISOString()
-    const endIso = computeSubscriptionEndDate(startIso, plan)
-    if (!endIso) {
-      setSubFormError('Could not compute end date for this plan.')
-      return
-    }
-
-    const status = SUBSCRIPTION_STATUSES.includes(subForm.status)
-      ? subForm.status
-      : 'active'
 
     setSubSaving(true)
     setSubFormError('')
     setMessage({ type: '', text: '' })
 
     try {
-      const payload = {
-        pump_id: id,
-        plan_id: subForm.plan_id,
-        status,
-        start_date: startIso,
-        end_date: endIso,
-      }
-
-      let error
-      if (pumpSubscription?.id) {
-        ;({ error } = await db
-          .from('subscriptions')
-          .update(payload)
-          .eq('id', pumpSubscription.id))
-      } else {
-        ;({ error } = await db.from('subscriptions').insert(payload))
-      }
+      const { error } = await db
+        .from('subscriptions')
+        .update({ status })
+        .eq('id', pumpSubscription.id)
 
       if (error) throw error
 
       await fetchPumpSubscription()
       setMessage({
         type: 'success',
-        text: `Subscription updated to ${formatPlanName(plan)} (no payment order). Ends ${formatISTDate(endIso)}.`,
+        text: `Status updated to ${formatSubscriptionStatus(status)}. Plan and end date unchanged.`,
       })
       setTimeout(() => setMessage({ type: '', text: '' }), 4000)
     } catch (error) {
-      console.error('Error saving subscription:', error)
-      setSubFormError(error.message || 'Failed to update subscription')
+      console.error('Error saving subscription status:', error)
+      setSubFormError(error.message || 'Failed to update status')
       setMessage({
         type: 'error',
-        text: error.message || 'Failed to update subscription',
+        text: error.message || 'Failed to update status',
       })
       setTimeout(() => setMessage({ type: '', text: '' }), 6000)
     } finally {
@@ -3037,7 +2960,7 @@ export default function PumpDetail() {
                   {!pumpSubscription ? (
                     <EmptyState
                       title="No subscription"
-                      description="Assign a plan below to create one (no payment order)."
+                      description="This pump has no subscription row yet."
                     />
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -3108,7 +3031,7 @@ export default function PumpDetail() {
                       <div>
                         <h4 className="text-[14px] font-semibold text-ink">Edit end date</h4>
                         <p className="pf-meta mt-0.5">
-                          Changes only the end date. Plan, price, and start date stay the same.
+                          Changes only the end date. Plan and status stay the same.
                         </p>
                       </div>
 
@@ -3171,55 +3094,25 @@ export default function PumpDetail() {
                     </div>
                   )}
 
-                  <div className="rounded-card border border-line bg-surface p-5 space-y-4">
-                    <div>
-                      <h4 className="text-[14px] font-semibold text-ink">
-                        {pumpSubscription ? 'Change subscription' : 'Assign subscription'}
-                      </h4>
-                      <p className="pf-meta mt-0.5">
-                        Admin override — no payment order. Start date resets to now; end date follows the plan duration.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {pumpSubscription && (
+                    <div className="rounded-card border border-line bg-surface p-5 space-y-4">
                       <div>
-                        <label className="block text-xs font-medium text-ink-muted mb-1.5">
-                          PLAN
-                        </label>
-                        <select
-                          value={subForm.plan_id}
-                          onChange={(e) =>
-                            setSubForm((prev) => ({ ...prev, plan_id: e.target.value }))
-                          }
-                          className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="">Select a plan…</option>
-                          {availablePlans.map((plan) => (
-                            <option key={plan.id} value={plan.id}>
-                              {plan.name}
-                              {plan.duration_months ? ` · ${plan.duration_months} mo` : ''}
-                              {plan.price_total_inr != null
-                                ? ` · ${formatInr(plan.price_total_inr)}`
-                                : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {availablePlans.length === 0 && (
-                          <p className="text-xs text-ink-muted mt-1.5">
-                            No active plans found in the plans table.
-                          </p>
-                        )}
+                        <h4 className="text-[14px] font-semibold text-ink">Change status</h4>
+                        <p className="pf-meta mt-0.5">
+                          Changes only the status. Plan and end date stay the same.
+                        </p>
                       </div>
 
-                      <div>
+                      <div className="max-w-sm">
                         <label className="block text-xs font-medium text-ink-muted mb-1.5">
                           STATUS
                         </label>
                         <select
-                          value={subForm.status}
-                          onChange={(e) =>
-                            setSubForm((prev) => ({ ...prev, status: e.target.value }))
-                          }
+                          value={subStatus}
+                          onChange={(e) => {
+                            setSubStatus(e.target.value)
+                            setSubFormError('')
+                          }}
                           className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           {SUBSCRIPTION_STATUSES.map((status) => (
@@ -3229,46 +3122,24 @@ export default function PumpDetail() {
                           ))}
                         </select>
                       </div>
-                    </div>
 
-                    {selectedPlanForForm && (
-                      <div className="rounded-control border border-line bg-surface-muted/50 px-3 py-2.5 text-sm text-ink-secondary">
-                        New period:{' '}
-                        <span className="font-medium text-ink">
-                          {formatISTDate(new Date().toISOString())}
-                        </span>
-                        {' → '}
-                        <span className="font-medium text-ink">
-                          {previewEndDate ? formatISTDate(previewEndDate) : '—'}
-                        </span>
-                        {selectedPlanForForm.duration_days
-                          ? ` (${selectedPlanForForm.duration_days} days)`
-                          : selectedPlanForForm.duration_months
-                            ? ` (${selectedPlanForForm.duration_months} months)`
-                            : ''}
+                      {subFormError && (
+                        <p className="text-sm text-danger">{subFormError}</p>
+                      )}
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSaveSubscription}
+                          disabled={subSaving}
+                          className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-semibold"
+                        >
+                          <Save className="w-4 h-4" />
+                          {subSaving ? 'Saving…' : 'Save status'}
+                        </button>
                       </div>
-                    )}
-
-                    {subFormError && (
-                      <p className="text-sm text-danger">{subFormError}</p>
-                    )}
-
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleSaveSubscription}
-                        disabled={subSaving || !subForm.plan_id}
-                        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-semibold"
-                      >
-                        <Save className="w-4 h-4" />
-                        {subSaving
-                          ? 'Saving…'
-                          : pumpSubscription
-                            ? 'Update subscription'
-                            : 'Create subscription'}
-                      </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
