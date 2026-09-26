@@ -28,6 +28,12 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : NaN
 }
 
+function daysFromMonths(months) {
+  const n = Number(months)
+  if (!Number.isInteger(n) || n <= 0) return ''
+  return String(n * 30)
+}
+
 function previewTotals(form) {
   const base = toNumber(form.price_base_inr)
   const rate = toNumber(form.gst_rate)
@@ -45,11 +51,7 @@ function validatePlan(form, plans) {
   if (taken) return `A plan with code "${form.code}" already exists.`
   if (!name) return 'Name is required.'
 
-  const durationDays = Number(form.duration_days)
   const durationMonths = Number(form.duration_months)
-  if (!Number.isInteger(durationDays) || durationDays <= 0) {
-    return 'Duration days must be a whole number greater than 0.'
-  }
   if (!Number.isInteger(durationMonths) || durationMonths <= 0) {
     return 'Duration months must be a whole number greater than 0.'
   }
@@ -114,8 +116,8 @@ export default function Plans() {
       id: plan.id,
       code: plan.code || '',
       name: plan.name || '',
-      duration_days: String(plan.duration_days ?? ''),
       duration_months: String(plan.duration_months ?? ''),
+      duration_days: daysFromMonths(plan.duration_months),
       price_base_inr: plan.price_base_inr == null ? '' : String(plan.price_base_inr),
       gst_rate: plan.gst_rate == null ? '18' : String(plan.gst_rate),
       currency: plan.currency || 'INR',
@@ -141,8 +143,8 @@ export default function Plans() {
     const payload = {
       code: form.code,
       name: form.name.trim(),
-      duration_days: Number(form.duration_days),
       duration_months: Number(form.duration_months),
+      duration_days: Number(daysFromMonths(form.duration_months)),
       price_base_inr: roundMoney(form.price_base_inr),
       gst_rate: roundMoney(form.gst_rate),
       currency: form.currency.trim() || 'INR',
@@ -174,7 +176,13 @@ export default function Plans() {
   }
 
   const setField = (key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
+    setForm((prev) => {
+      const next = { ...prev, [key]: value }
+      if (key === 'duration_months') {
+        next.duration_days = daysFromMonths(value)
+      }
+      return next
+    })
     setFormError('')
   }
 
@@ -332,17 +340,6 @@ export default function Plans() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-ink-muted mb-1.5">DURATION DAYS</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={form.duration_days}
-                    onChange={(e) => setField('duration_days', e.target.value)}
-                    className="w-full px-3 py-2 border border-line rounded-lg text-sm"
-                  />
-                </div>
-                <div>
                   <label className="block text-xs font-medium text-ink-muted mb-1.5">DURATION MONTHS</label>
                   <input
                     type="number"
@@ -352,6 +349,16 @@ export default function Plans() {
                     onChange={(e) => setField('duration_months', e.target.value)}
                     className="w-full px-3 py-2 border border-line rounded-lg text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-muted mb-1.5">DURATION DAYS</label>
+                  <input
+                    type="number"
+                    value={form.duration_days}
+                    disabled
+                    className="w-full px-3 py-2 border border-line rounded-lg text-sm bg-surface-muted text-ink-secondary"
+                  />
+                  <p className="text-xs text-ink-muted mt-1.5">30 days per month</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink-muted mb-1.5">BASE PRICE (INR)</label>
