@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Clock, Fuel, Gauge, Loader2, Plus, X } from 'lucide-react'
+import { AlertTriangle, Clock, Cylinder, Fuel, Gauge, Loader2, Plus, X } from 'lucide-react'
 import { db, hasAdminServiceRole } from '../lib/supabase'
 import {
   ALLOWED_FUEL_TYPE_NAMES,
@@ -34,6 +34,12 @@ const SETUP_TABS = [
     label: 'Nozzle Configuration',
     description: 'Nozzles and initial meter readings',
     icon: Gauge,
+  },
+  {
+    id: 'tanks',
+    label: 'Tanks',
+    description: 'Tank capacity, stock, and nozzles',
+    icon: Cylinder,
   },
 ]
 
@@ -109,6 +115,48 @@ const todayInputValue = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+const STOCK_DATE_FALLBACK = '2020-01-01'
+
+const toDateInputValue = (value) => {
+  if (!value) return ''
+  const raw = String(value)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const sanitizeDecimalInput = (raw) => {
+  const cleaned = String(raw ?? '').replace(/[^\d.]/g, '')
+  const dot = cleaned.indexOf('.')
+  if (dot === -1) return cleaned
+  return `${cleaned.slice(0, dot + 1)}${cleaned.slice(dot + 1).replace(/\./g, '')}`
+}
+
+const parseDecimalField = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s || s === '.') return null
+  if (!/^\d+(\.\d+)?$/.test(s)) return Number.NaN
+  return Number(s)
+}
+
+const nozzleDisplayName = (nozzle) => {
+  const name = String(nozzle?.name || '').trim()
+  if (name) return name
+  return `Nozzle ${nozzle?.nozzle_number}`
+}
+
+const emptyTank = (stockStartDate) => ({
+  id: crypto.randomUUID(),
+  name: '',
+  fuelTypeId: '',
+  capacity: '',
+  initialVolume: '',
+  stockStartDate: stockStartDate || todayInputValue(),
+  nozzleIds: [],
+  isActive: true,
+})
+
 export default function PumpSignupSetup({ pumpId, pumpName }) {
   const [activeTab, setActiveTab] = useState('fuel')
   const [loading, setLoading] = useState(true)
@@ -116,8 +164,12 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   const [fuelTypes, setFuelTypes] = useState([])
   const [shifts, setShifts] = useState([])
   const [nozzles, setNozzles] = useState([])
+  const [tanks, setTanks] = useState([])
+  const [nozzlesByFuelType, setNozzlesByFuelType] = useState({})
+  const [nozzleListLoading, setNozzleListLoading] = useState({})
+  const [stockDateFloor, setStockDateFloor] = useState(STOCK_DATE_FALLBACK)
 
-  const [panelMode, setPanelMode] = useState({ fuel: null, shifts: null, nozzles: null })
+  const [panelMode, setPanelMode] = useState({ fuel: null, shifts: null, nozzles: null, tanks: null })
   const [saving, setSaving] = useState(false)
   const [formMessage, setFormMessage] = useState({ type: '', text: '' })
 
@@ -129,6 +181,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   const [nozzleDraft, setNozzleDraft] = useState([emptyNozzle()])
   const [meterDate, setMeterDate] = useState(todayInputValue())
   const [meterShiftId, setMeterShiftId] = useState('')
+  const [tankDraft, setTankDraft] = useState([emptyTank()])
 
   const parseCountInput = (raw, max) => {
     if (raw === '' || raw == null) return null
@@ -147,7 +200,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     setError('')
     try {
       // Prefer service-role client so pending-pump rows are visible after admin writes
-      const [fuelRes, shiftRes, nozzleRes, readingRes] = await Promise.all([
+      const [fuelRes, shiftRes, nozzleRes, readingRes, tankRes, pumpRes] = await Promise.all([
         db
           .from('fuel_types')
           .select('id, name, rsp, ro_price, is_active, display_order')
@@ -169,12 +222,21 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
           .eq('pump_id', pumpId)
           .order('date', { ascending: true })
           .order('created_at', { ascending: true }),
+        db
+          .from('tanks')
+          .select(
+            'id, name, fuel_type, capacity_liters, initial_volume_liters, current_volume_liters, is_active, stock_start_date'
+          )
+          .eq('pump_id', pumpId)
+          .order('name', { ascending: true }),
+        db.from('pumps').select('created_at').eq('id', pumpId).maybeSingle(),
       ])
 
       if (fuelRes.error) throw fuelRes.error
       if (shiftRes.error) throw shiftRes.error
       if (nozzleRes.error) throw nozzleRes.error
       if (readingRes.error) throw readingRes.error
+      if (tankRes.error) throw tankRes.error
 
       const fuelMap = {}
       ;(fuelRes.data || []).forEach((f) => {
@@ -205,6 +267,8 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
       )
       setFuelTypes(nextFuels)
       setShifts(nextShifts)
+      setTanks(tankRes.data || [])
+      setNozzlesByFuelType({})
       setNozzles(
         Object.values(earliestByNozzle).map((reading, index) => {
           const info = nozzleInfoMap[reading.nozzle_id]
@@ -223,12 +287,23 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
           }
         })
       )
-      setPanelMode({ fuel: null, shifts: null, nozzles: null })
+      setPanelMode({ fuel: null, shifts: null, nozzles: null, tanks: null })
       if (nextShifts.length > 0) {
         setMeterShiftId((prev) => prev || nextShifts[0].id)
       }
+
+      const today = todayInputValue()
+      const firstMeterDate = toDateInputValue(
+        (readingRes.data || []).find((row) => row.date)?.date
+      )
+      const registrationDate = pumpRes.error ? '' : toDateInputValue(pumpRes.data?.created_at)
+      // Business dates in this setup already start at the first meter reading.
+      // Fall back to the pump registration date, then 1 Jan 2020.
+      const floor = firstMeterDate || registrationDate || STOCK_DATE_FALLBACK
+      setStockDateFloor(floor > today ? today : floor)
     } catch (err) {
       console.error('Pump setup fetch error:', err)
+      setStockDateFloor(STOCK_DATE_FALLBACK)
       setError(err.message || 'Failed to load setup data')
     } finally {
       setLoading(false)
@@ -262,6 +337,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
   }, [nozzleCount])
 
   const canConfigureNozzles = fuelTypes.length > 0 && shifts.length > 0
+  const canConfigureTanks = fuelTypes.length > 0 && nozzles.length > 0
 
   const nozzlePrerequisiteWarning = (() => {
     const missing = []
@@ -277,19 +353,34 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     }
   }, [canConfigureNozzles, panelMode.nozzles])
 
+  useEffect(() => {
+    if (!canConfigureTanks && panelMode.tanks) {
+      setPanelMode((prev) => ({ ...prev, tanks: null }))
+    }
+  }, [canConfigureTanks, panelMode.tanks])
+
   const setMode = (tab, mode) => {
     setPanelMode((prev) => ({ ...prev, [tab]: mode }))
     setFormMessage({ type: '', text: '' })
   }
 
+  const defaultStockDate = () => {
+    const today = todayInputValue()
+    return today < stockDateFloor ? stockDateFloor : today
+  }
+
   const openAdd = (tab) => {
     if (tab === 'nozzles' && !canConfigureNozzles) return
+    if (tab === 'tanks' && !canConfigureTanks) return
     if (tab === 'fuel') {
       setFuelCountInput('1')
       setFuelDraft([emptyFuelType()])
     } else if (tab === 'shifts') {
       setShiftCountInput('1')
       setShiftDraft([emptyShift(1)])
+    } else if (tab === 'tanks') {
+      setTankDraft([emptyTank(defaultStockDate())])
+      setNozzlesByFuelType({})
     } else {
       setNozzleCountInput('1')
       setNozzleDraft([emptyNozzle()])
@@ -319,6 +410,156 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     setNozzleDraft((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
   }
 
+  const loadNozzlesForFuel = async (fuelTypeId) => {
+    if (!pumpId || !fuelTypeId) return
+    setNozzleListLoading((prev) => ({ ...prev, [fuelTypeId]: true }))
+    try {
+      const { data, error: nozzleError } = await db
+        .from('nozzle_info')
+        .select('nozzle_id, nozzle_number, name, tank_id')
+        .eq('pump_id', pumpId)
+        .eq('fuel_type_id', fuelTypeId)
+        .order('nozzle_number')
+      if (nozzleError) throw nozzleError
+      setNozzlesByFuelType((prev) => ({ ...prev, [fuelTypeId]: data || [] }))
+    } catch (err) {
+      setNozzlesByFuelType((prev) => {
+        const next = { ...prev }
+        delete next[fuelTypeId]
+        return next
+      })
+      showMessage('error', err.message || 'Failed to load nozzles')
+    } finally {
+      setNozzleListLoading((prev) => ({ ...prev, [fuelTypeId]: false }))
+    }
+  }
+
+  const updateTank = (id, patch) => {
+    setTankDraft((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row
+        const next = { ...row, ...patch }
+        if (Object.prototype.hasOwnProperty.call(patch, 'fuelTypeId') && patch.fuelTypeId !== row.fuelTypeId) {
+          next.nozzleIds = []
+        }
+        return next
+      })
+    )
+    if (patch.fuelTypeId) loadNozzlesForFuel(patch.fuelTypeId)
+  }
+
+  const toggleTankNozzle = (tankId, nozzleId) => {
+    setTankDraft((prev) =>
+      prev.map((row) => {
+        if (row.id !== tankId) return row
+        const selected = row.nozzleIds.includes(nozzleId)
+        return {
+          ...row,
+          nozzleIds: selected
+            ? row.nozzleIds.filter((id) => id !== nozzleId)
+            : [...row.nozzleIds, nozzleId],
+        }
+      })
+    )
+  }
+
+  const validateTankRow = (row, rows) => {
+    const trimmedName = row.name.trim()
+    if (!trimmedName) return 'Please enter tank name'
+    const duplicateInForm = rows.some(
+      (other) =>
+        other.id !== row.id && other.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    )
+    if (duplicateInForm) return 'A tank with this name already exists'
+    if (!row.fuelTypeId) return 'Select fuel type'
+
+    const capacity = parseDecimalField(row.capacity)
+    if (capacity == null || Number.isNaN(capacity)) return 'Please enter tank capacity'
+    if (capacity <= 0) return 'Capacity must be greater than 0'
+
+    const initialVolume = parseDecimalField(row.initialVolume)
+    if (initialVolume == null || Number.isNaN(initialVolume)) return 'Please enter initial volume'
+    if (initialVolume < 0) return 'Initial volume cannot be negative'
+    if (initialVolume > capacity) return 'Initial volume cannot exceed capacity'
+
+    const today = todayInputValue()
+    if (!row.stockStartDate || row.stockStartDate < stockDateFloor || row.stockStartDate > today) {
+      return 'Stock start date must be between the earliest business date and today.'
+    }
+
+    const fuelNozzles = nozzlesByFuelType[row.fuelTypeId]
+    if (!fuelNozzles) return 'Nozzles for this fuel type are still loading.'
+    if (fuelNozzles.length > 0) {
+      const takenElsewhere = new Set(
+        rows
+          .filter((other) => other.id !== row.id && other.fuelTypeId === row.fuelTypeId)
+          .flatMap((other) => other.nozzleIds)
+      )
+      const enabledSelected = row.nozzleIds.filter((nozzleId) => {
+        const nozzle = fuelNozzles.find((item) => item.nozzle_id === nozzleId)
+        if (!nozzle || nozzle.tank_id) return false
+        if (takenElsewhere.has(nozzleId)) return false
+        return true
+      })
+      if (enabledSelected.length === 0) return 'Select at least one nozzle connected to this tank.'
+    }
+
+    return ''
+  }
+
+  const saveTank = async (row, nozzleCache) => {
+    const trimmedName = row.name.trim()
+    const { data: existing, error: existingError } = await db
+      .from('tanks')
+      .select('id')
+      .eq('pump_id', pumpId)
+      .ilike('name', trimmedName)
+    if (existingError) throw existingError
+    if (existing && existing.length > 0) {
+      throw new Error('A tank with this name already exists')
+    }
+
+    const capacityLiters = parseDecimalField(row.capacity)
+    const initialVolumeLiters = parseDecimalField(row.initialVolume)
+    const { data: savedTank, error: insertError } = await db
+      .from('tanks')
+      .insert({
+        pump_id: pumpId,
+        name: trimmedName,
+        fuel_type: row.fuelTypeId,
+        capacity_liters: capacityLiters,
+        initial_dip_cm: 0,
+        initial_volume_liters: initialVolumeLiters,
+        current_volume_liters: initialVolumeLiters,
+        is_active: row.isActive,
+        stock_start_date: row.stockStartDate,
+      })
+      .select()
+      .single()
+    if (insertError) throw insertError
+
+    const fuelNozzles = nozzleCache[row.fuelTypeId] || []
+    const selectedNozzleIds = row.nozzleIds.filter((nozzleId) => {
+      const nozzle = fuelNozzles.find((item) => item.nozzle_id === nozzleId)
+      return nozzle && !nozzle.tank_id
+    })
+    if (selectedNozzleIds.length > 0) {
+      const { error: mapError } = await db
+        .from('nozzle_info')
+        .update({ tank_id: savedTank.id })
+        .in('nozzle_id', selectedNozzleIds)
+        .eq('pump_id', pumpId)
+      if (mapError) {
+        const linkError = new Error(mapError.message || 'Failed to link nozzles')
+        linkError.tankInserted = true
+        throw linkError
+      }
+      fuelNozzles.forEach((nozzle) => {
+        if (selectedNozzleIds.includes(nozzle.nozzle_id)) nozzle.tank_id = savedTank.id
+      })
+    }
+  }
+
   const showMessage = (type, text) => {
     setFormMessage({ type, text })
   }
@@ -336,6 +577,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
 
     setSaving(true)
     setFormMessage({ type: '', text: '' })
+    let tanksSaved = 0
     try {
       if (tab === 'fuel') {
         const validationError = validateFuelDraft(fuelDraft)
@@ -349,7 +591,7 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
         if (validationError) throw new Error(validationError)
         await adminSyncPumpShifts(pumpId, normalized)
         showMessage('success', 'Shifts saved.')
-      } else {
+      } else if (tab === 'nozzles') {
         const validationError = validateNozzleDraft({
           rows: nozzleDraft,
           meterDate,
@@ -362,10 +604,44 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
           shiftId: meterShiftId,
         })
         showMessage('success', 'Nozzles saved.')
+      } else if (tab === 'tanks') {
+        if (fuelTypes.length === 0) throw new Error('Add fuel types before creating tanks.')
+        if (nozzles.length === 0) throw new Error('Save nozzles before creating tanks.')
+        for (let i = 0; i < tankDraft.length; i += 1) {
+          const validationError = validateTankRow(tankDraft[i], tankDraft)
+          if (validationError) throw new Error(validationError)
+        }
+        const nozzleCache = Object.fromEntries(
+          Object.entries(nozzlesByFuelType).map(([fuelTypeId, rows]) => [
+            fuelTypeId,
+            (rows || []).map((nozzle) => ({ ...nozzle })),
+          ])
+        )
+        for (const row of tankDraft) {
+          try {
+            await saveTank(row, nozzleCache)
+            tanksSaved += 1
+          } catch (err) {
+            if (err.tankInserted) tanksSaved += 1
+            throw err
+          }
+        }
+        showMessage('success', tankDraft.length === 1 ? 'Tank saved.' : 'Tanks saved.')
       }
       await loadSetup()
     } catch (err) {
       console.error('Pump setup save error:', err)
+      if (tanksSaved > 0) {
+        setTankDraft((prev) => prev.slice(tanksSaved))
+        const { data: refreshed } = await db
+          .from('tanks')
+          .select(
+            'id, name, fuel_type, capacity_liters, initial_volume_liters, current_volume_liters, is_active, stock_start_date'
+          )
+          .eq('pump_id', pumpId)
+          .order('name', { ascending: true })
+        if (refreshed) setTanks(refreshed)
+      }
       showMessage('error', err.message || 'Save failed')
     } finally {
       setSaving(false)
@@ -407,6 +683,9 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     if (tab === 'fuel') return fuelCount == null
     if (tab === 'shifts') return shiftCount == null
     if (tab === 'nozzles') return nozzleCount == null
+    if (tab === 'tanks') {
+      return tankDraft.some((row) => row.fuelTypeId && nozzleListLoading[row.fuelTypeId])
+    }
     return false
   }
 
@@ -670,6 +949,177 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     </div>
   )
 
+  const renderTanksForm = () => (
+    <div className="space-y-5 rounded-lg border border-line bg-surface-muted/40 p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-[14px] font-semibold text-ink">Add tanks</h3>
+        <button
+          type="button"
+          onClick={() => setTankDraft((prev) => [...prev, emptyTank(defaultStockDate())])}
+          className="pf-btn-secondary !h-8"
+        >
+          <Plus className="w-4 h-4" />
+          Add another tank
+        </button>
+      </div>
+      <div className="space-y-4">
+        {tankDraft.map((row, index) => {
+          const fuelNozzles = row.fuelTypeId ? nozzlesByFuelType[row.fuelTypeId] : undefined
+          const loadingNozzles = Boolean(row.fuelTypeId && nozzleListLoading[row.fuelTypeId])
+          const takenElsewhere = new Set(
+            tankDraft
+              .filter((other) => other.id !== row.id && other.fuelTypeId === row.fuelTypeId)
+              .flatMap((other) => other.nozzleIds)
+          )
+          return (
+            <div key={row.id} className="rounded-lg border border-line bg-surface p-4 space-y-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
+                  Tank {index + 1}
+                </p>
+                {tankDraft.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setTankDraft((prev) => prev.filter((item) => item.id !== row.id))}
+                    className="text-[12px] text-ink-muted hover:text-ink"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-xs font-medium text-ink-secondary">Tank name</span>
+                  <input
+                    type="text"
+                    value={row.name}
+                    onChange={(e) => updateTank(row.id, { name: e.target.value })}
+                    className={`${fieldClass} mt-1.5`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-ink-secondary">Fuel type</span>
+                  <select
+                    value={row.fuelTypeId}
+                    onChange={(e) => updateTank(row.id, { fuelTypeId: e.target.value })}
+                    className={`${fieldClass} mt-1.5`}
+                  >
+                    <option value="">Select fuel type</option>
+                    {fuelTypes.map((fuel) => (
+                      <option key={fuel.id} value={fuel.id}>
+                        {fuel.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-ink-secondary">Capacity (liters)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={row.capacity}
+                    onChange={(e) => updateTank(row.id, { capacity: sanitizeDecimalInput(e.target.value) })}
+                    className={`${fieldClass} mt-1.5`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-ink-secondary">Initial volume (liters)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={row.initialVolume}
+                    onChange={(e) =>
+                      updateTank(row.id, { initialVolume: sanitizeDecimalInput(e.target.value) })
+                    }
+                    className={`${fieldClass} mt-1.5`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-ink-secondary">Stock start date</span>
+                  <input
+                    type="date"
+                    value={row.stockStartDate}
+                    min={stockDateFloor}
+                    max={todayInputValue()}
+                    onChange={(e) => updateTank(row.id, { stockStartDate: e.target.value })}
+                    className={`${fieldClass} mt-1.5`}
+                  />
+                </label>
+                <div className="flex items-end">
+                  <label className="flex items-center justify-between gap-3 w-full rounded-lg border border-line px-3.5 py-2.5">
+                    <span className="text-xs font-medium text-ink-secondary">Active</span>
+                    <button
+                      type="button"
+                      onClick={() => updateTank(row.id, { isActive: !row.isActive })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        row.isActive ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                      aria-pressed={row.isActive}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          row.isActive ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-ink-secondary">Connected nozzles</p>
+                {!row.fuelTypeId ? (
+                  <p className="mt-2 text-[12px] text-ink-muted">Select a fuel type to load nozzles.</p>
+                ) : loadingNozzles ? (
+                  <p className="mt-2 text-[12px] text-ink-muted">Loading nozzles…</p>
+                ) : !fuelNozzles ? (
+                  <p className="mt-2 text-[12px] text-ink-muted">Nozzles could not be loaded.</p>
+                ) : fuelNozzles.length === 0 ? (
+                  <p className="mt-2 text-[12px] text-ink-secondary">No nozzles available for this fuel type.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {fuelNozzles.map((nozzle) => {
+                      const linkedElsewhere = Boolean(nozzle.tank_id) || takenElsewhere.has(nozzle.nozzle_id)
+                      const checked = row.nozzleIds.includes(nozzle.nozzle_id)
+                      return (
+                        <label
+                          key={nozzle.nozzle_id}
+                          className={`flex items-start gap-2 rounded-lg border border-line px-3 py-2 ${
+                            linkedElsewhere ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={checked && !linkedElsewhere}
+                            disabled={linkedElsewhere}
+                            onChange={() => {
+                              if (!linkedElsewhere) toggleTankNozzle(row.id, nozzle.nozzle_id)
+                            }}
+                          />
+                          <span>
+                            <span className="block text-[13px] font-medium text-ink">
+                              {nozzleDisplayName(nozzle)}
+                            </span>
+                            {linkedElsewhere && (
+                              <span className="block text-[12px] text-ink-muted">
+                                Already connected to another tank
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {formFooter('tanks')}
+    </div>
+  )
+
   const renderFuelView = () => {
     if (fuelTypes.length === 0) {
       return (
@@ -823,6 +1273,77 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
     )
   }
 
+  const fuelTypeName = (fuelTypeId) =>
+    fuelTypes.find((fuel) => fuel.id === fuelTypeId)?.name || '—'
+
+  const tanksLockMessage =
+    fuelTypes.length === 0
+      ? 'Add fuel types before creating tanks.'
+      : 'Save nozzles before creating tanks.'
+
+  const renderTanksView = () => {
+    if (!canConfigureTanks) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p>{tanksLockMessage}</p>
+          </div>
+          <EmptyState
+            title="Tanks are locked"
+            description="Add fuel types and save nozzles before creating tanks."
+          />
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <button type="button" onClick={() => openAdd('tanks')} className="pf-btn-primary">
+            <Plus className="w-4 h-4" />
+            Add tank
+          </button>
+        </div>
+        {tanks.length === 0 ? (
+          <EmptyState
+            title="No tanks yet"
+            description={`Add tanks for ${pumpName || 'this pump'}.`}
+          />
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-line">
+            <table className="min-w-full text-[13px]">
+              <thead className="bg-surface-muted text-ink-secondary">
+                <tr>
+                  <th className="px-3 py-2.5 text-left font-medium">Name</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Fuel type</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Capacity (L)</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Initial volume (L)</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Stock start</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tanks.map((row) => (
+                  <tr key={row.id} className="border-t border-line">
+                    <td className="px-3 py-2.5 font-medium text-ink">{row.name}</td>
+                    <td className="px-3 py-2.5 text-ink">{fuelTypeName(row.fuel_type)}</td>
+                    <td className="px-3 py-2.5 text-right text-ink">{formatLiters(row.capacity_liters)}</td>
+                    <td className="px-3 py-2.5 text-right text-ink">
+                      {formatLiters(row.initial_volume_liters)}
+                    </td>
+                    <td className="px-3 py-2.5 text-ink">{formatDate(row.stock_start_date)}</td>
+                    <td className="px-3 py-2.5 text-ink">{row.is_active ? 'Yes' : 'No'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderPanel = () => {
     if (loading) {
       return (
@@ -848,6 +1369,10 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
       if (panelMode.shifts) return renderShiftsForm()
       return renderShiftsView()
     }
+    if (activeTab === 'tanks') {
+      if (panelMode.tanks && canConfigureTanks) return renderTanksForm()
+      return renderTanksView()
+    }
     if (panelMode.nozzles && canConfigureNozzles) return renderNozzlesForm()
     return renderNozzlesView()
   }
@@ -859,19 +1384,32 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
           <div>
             <h2 className="pf-section-title">Signup Completion</h2>
             <p className="pf-meta mt-0.5">
-              Configure fuel types, shifts, and nozzles for {pumpName || 'this pump'}
+              Configure fuel types, shifts, nozzles, and tanks for {pumpName || 'this pump'}
             </p>
           </div>
         </div>
 
         <div className="p-4 sm:p-5 space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {SETUP_TABS.map(({ id, label, description, icon: Icon }) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+            {SETUP_TABS.map(({ id, label, description, icon: Icon }) => {
+              const tanksLocked = id === 'tanks' && !canConfigureTanks
+              return (
               <button
                 key={id}
                 type="button"
-                onClick={() => setActiveTab(id)}
-                className={tabButtonClass(id)}
+                onClick={() => {
+                  if (tanksLocked) return
+                  setActiveTab(id)
+                }}
+                disabled={tanksLocked}
+                title={
+                  tanksLocked
+                    ? fuelTypes.length === 0
+                      ? 'Add fuel types before creating tanks.'
+                      : 'Save nozzles before creating tanks.'
+                    : undefined
+                }
+                className={`${tabButtonClass(id)} ${tanksLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                 aria-pressed={activeTab === id}
               >
                 <span className="inline-flex items-center gap-2 text-[13px] font-semibold">
@@ -880,7 +1418,8 @@ export default function PumpSignupSetup({ pumpId, pumpName }) {
                 </span>
                 <span className="text-[12px] text-ink-muted leading-snug">{description}</span>
               </button>
-            ))}
+              )
+            })}
           </div>
 
           {renderPanel()}
