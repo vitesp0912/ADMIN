@@ -1106,7 +1106,7 @@ export default function PumpDetail() {
     }
   }
 
-  const handleSaveChanges = async (overrideFormData = null) => {
+  const handleSaveChanges = async (overrideFormData = null, options = {}) => {
     setSaving(true)
     setMessage({ type: '', text: '' })
     
@@ -1128,6 +1128,9 @@ export default function PumpDetail() {
         ('registration_status' in overrideFormData || 'is_active' in overrideFormData)
           ? overrideFormData
           : formData
+      const subscriptionStatus = SUBSCRIPTION_STATUSES.includes(options.subscriptionStatus)
+        ? options.subscriptionStatus
+        : null
       
       const updateData = {
         is_active: dataToSave.is_active,
@@ -1155,6 +1158,18 @@ export default function PumpDetail() {
       }
 
       console.log('Update successful:', data)
+
+      if (subscriptionStatus) {
+        const { data: subRows, error: subError } = await db
+          .from('subscriptions')
+          .update({ status: subscriptionStatus })
+          .eq('pump_id', id)
+          .select('id')
+        if (subError) throw subError
+        if (!subRows || subRows.length === 0) {
+          throw new Error('Pump updated, but no subscription row was found for this pump.')
+        }
+      }
 
       // Keep local form in sync with what was saved
       if (
@@ -1218,7 +1233,7 @@ export default function PumpDetail() {
     }
 
     setFormData(approvedFormData)
-    await handleSaveChanges(approvedFormData)
+    await handleSaveChanges(approvedFormData, { subscriptionStatus: 'active' })
   }
 
   const handleQuickPending = async () => {
@@ -1229,7 +1244,7 @@ export default function PumpDetail() {
     }
 
     setFormData(pendingFormData)
-    await handleSaveChanges(pendingFormData)
+    await handleSaveChanges(pendingFormData, { subscriptionStatus: 'pending' })
   }
 
   const handleQuickReject = async () => {
@@ -1240,7 +1255,7 @@ export default function PumpDetail() {
     }
 
     setFormData(rejectedFormData)
-    await handleSaveChanges(rejectedFormData)
+    await handleSaveChanges(rejectedFormData, { subscriptionStatus: 'expired' })
   }
 
   const openPasswordModal = () => {

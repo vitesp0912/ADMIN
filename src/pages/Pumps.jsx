@@ -257,6 +257,16 @@ export default function Pumps() {
 
       if (error) throw error
 
+      const { data: subRows, error: subError } = await db
+        .from('subscriptions')
+        .update({ status: 'active' })
+        .eq('pump_id', pumpId)
+        .select('id')
+      if (subError) throw subError
+      if (!subRows || subRows.length === 0) {
+        throw new Error('Pump approved, but no subscription row was found for this pump.')
+      }
+
       // Activate all users for this pump
       const { error: usersError } = await db
         .from('users')
@@ -299,6 +309,16 @@ export default function Pumps() {
         .eq('id', pumpId)
 
       if (error) throw error
+
+      const { data: subRows, error: subError } = await db
+        .from('subscriptions')
+        .update({ status: 'expired' })
+        .eq('pump_id', pumpId)
+        .select('id')
+      if (subError) throw subError
+      if (!subRows || subRows.length === 0) {
+        throw new Error('Pump rejected, but no subscription row was found for this pump.')
+      }
 
       setMessage({ type: 'success', text: 'Pump rejected successfully!' })
       setTimeout(() => setMessage({ type: '', text: '' }), 3000)
