@@ -19,6 +19,7 @@ import {
   subscriptionStatusTone,
 } from '../lib/subscriptions'
 import PaymentHistory from './PaymentHistory'
+import WhatsAppFlows from './WhatsAppFlows'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -105,7 +106,8 @@ export default function PumpDetail() {
   const isInformationView = /\/information\/?$/.test(location.pathname)
   const isSetupView = /\/setup\/?$/.test(location.pathname)
   const isNotesView = /\/notes\/?$/.test(location.pathname)
-  const isDataView = !isInformationView && !isSetupView && !isNotesView
+  const isWhatsAppView = /\/whatsapp\/?$/.test(location.pathname)
+  const isDataView = !isInformationView && !isSetupView && !isNotesView && !isWhatsAppView
   const pumpsListPath = (() => {
     const status = location.state?.pumpsStatus
     const q = location.state?.pumpsSearch
@@ -462,9 +464,9 @@ export default function PumpDetail() {
   }, [isSupportAdmin, activeTab])
 
   useEffect(() => {
-    if (!supportCheckDone || isSupportAdmin || !isSetupView) return
+    if (!supportCheckDone || isSupportAdmin || (!isSetupView && !isWhatsAppView)) return
     navigate(`/pumps/${id}/information`, { replace: true, state: location.state })
-  }, [supportCheckDone, isSupportAdmin, isSetupView, id, navigate, location.state])
+  }, [supportCheckDone, isSupportAdmin, isSetupView, isWhatsAppView, id, navigate, location.state])
 
   useEffect(() => {
     if (id && activeDataTab && activeDataTab !== 'users') {
@@ -1520,6 +1522,16 @@ export default function PumpDetail() {
             >
               Notes
             </NavLink>
+            {isSupportAdmin && (
+              <NavLink
+                to={`/pumps/${id}/whatsapp`}
+                state={location.state}
+                className={sectionTabClass}
+              >
+                <span className="sm:hidden">WhatsApp</span>
+                <span className="hidden sm:inline">WhatsApp Flows</span>
+              </NavLink>
+            )}
           </div>
         </div>
       </div>
@@ -3200,6 +3212,14 @@ export default function PumpDetail() {
       {isSetupView && isSupportAdmin && (
         <div className="animate-fade-in">
           <PumpSignupSetup pumpId={pump.id} pumpName={pump.name} />
+        </div>
+      )}
+
+      {isWhatsAppView && isSupportAdmin && id && (
+        <div className="animate-fade-in">
+          <div className="pf-card overflow-hidden p-3 sm:p-5">
+            <WhatsAppFlows pumpId={id} />
+          </div>
         </div>
       )}
 

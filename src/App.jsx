@@ -121,6 +121,7 @@ VITE_SUPABASE_SERVICE_ROLE_KEY=...`}
           <Route path="pumps/:id/information" element={<PumpDetail />} />
           <Route path="pumps/:id/setup" element={<PumpDetail />} />
           <Route path="pumps/:id/notes" element={<PumpDetail />} />
+          <Route path="pumps/:id/whatsapp" element={<PumpDetail />} />
           <Route path="users" element={<Users />} />
           <Route path="sales" element={<Sales />} />
           <Route path="expenses" element={<Expenses />} />
