@@ -70,6 +70,7 @@ function getStoredTheme() {
 function pumpPageTitle(pathname) {
   if (pathname.match(/^\/pumps\/[^/]+\/information/)) return 'Pump information'
   if (pathname.match(/^\/pumps\/[^/]+\/setup/)) return 'Pump setup'
+  if (pathname.match(/^\/pumps\/[^/]+\/notes/)) return 'Pump notes'
   if (pathname.startsWith('/pumps/')) return 'Pump data'
   return 'PetroFI'
 }

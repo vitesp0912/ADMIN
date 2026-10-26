@@ -95,7 +95,6 @@ const DATA_TABS = [
   { id: 'fuel-receipts', label: 'Fuel receipts' },
   { id: 'bank-accounts', label: 'Bank accounts' },
   { id: 'treasury-transactions', label: 'Transactions' },
-  { id: 'notes', label: 'Notes' },
   { id: 'error-logs', label: 'Error logs' },
 ]
 
@@ -105,7 +104,8 @@ export default function PumpDetail() {
   const location = useLocation()
   const isInformationView = /\/information\/?$/.test(location.pathname)
   const isSetupView = /\/setup\/?$/.test(location.pathname)
-  const isDataView = !isInformationView && !isSetupView
+  const isNotesView = /\/notes\/?$/.test(location.pathname)
+  const isDataView = !isInformationView && !isSetupView && !isNotesView
   const pumpsListPath = (() => {
     const status = location.state?.pumpsStatus
     const q = location.state?.pumpsSearch
@@ -471,6 +471,15 @@ export default function PumpDetail() {
       fetchTabData(activeDataTab)
     }
   }, [id, activeDataTab])
+
+  useEffect(() => {
+    if (id && isNotesView) fetchTabData('notes')
+    if (!isNotesView) {
+      setNoteForm(emptyNoteForm)
+      setNoteFormError('')
+      setNoteFormOpen(false)
+    }
+  }, [id, isNotesView])
 
   const fetchPumpDetails = async () => {
     try {
@@ -1410,7 +1419,7 @@ export default function PumpDetail() {
   ]
 
   const sectionTabClass = ({ isActive }) =>
-    `flex-1 sm:flex-none inline-flex items-center justify-center h-9 sm:h-8 px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
+    `w-full sm:w-auto inline-flex items-center justify-center h-9 sm:h-8 px-2.5 sm:px-3 rounded-[6px] text-[12px] sm:text-[13px] font-semibold leading-none whitespace-nowrap transition-colors duration-100 ${
       isActive
         ? 'bg-surface text-ink shadow-soft'
         : 'text-ink-secondary hover:text-ink'
@@ -1478,19 +1487,21 @@ export default function PumpDetail() {
           </div>
 
           <div
-            className="flex w-full sm:w-auto sm:shrink-0 p-0.5 rounded-control border border-line bg-surface-muted"
+            className="grid grid-cols-2 sm:flex sm:flex-nowrap w-full sm:w-auto sm:shrink-0 p-0.5 rounded-control border border-line bg-surface-muted gap-0.5"
             role="navigation"
             aria-label="Pump sections"
           >
             <NavLink to={`/pumps/${id}`} end state={location.state} className={sectionTabClass}>
-              Pump Data
+              <span className="sm:hidden">Data</span>
+              <span className="hidden sm:inline">Pump Data</span>
             </NavLink>
             <NavLink
               to={`/pumps/${id}/information`}
               state={location.state}
               className={sectionTabClass}
             >
-              Pump Information
+              <span className="sm:hidden">Info</span>
+              <span className="hidden sm:inline">Pump Information</span>
             </NavLink>
             {isSupportAdmin && (
               <NavLink
@@ -1498,9 +1509,17 @@ export default function PumpDetail() {
                 state={location.state}
                 className={sectionTabClass}
               >
-                Pump Setup
+                <span className="sm:hidden">Setup</span>
+                <span className="hidden sm:inline">Pump Setup</span>
               </NavLink>
             )}
+            <NavLink
+              to={`/pumps/${id}/notes`}
+              state={location.state}
+              className={sectionTabClass}
+            >
+              Notes
+            </NavLink>
           </div>
         </div>
       </div>
@@ -2496,156 +2515,6 @@ export default function PumpDetail() {
               </div>
             )}
 
-            {/* Notes Tab */}
-            {activeDataTab === 'notes' && (
-              <div className="min-w-0">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2 min-w-0">
-                    <StickyNote className="w-4 h-4 text-brand-500 shrink-0" />
-                    <span className="truncate">Notes & follow-ups ({pumpNotes.length})</span>
-                  </h3>
-                  {!noteFormOpen && (
-                    <button type="button" onClick={openNoteForm} className="pf-btn-primary w-full sm:w-auto">
-                      <Plus className="w-4 h-4 shrink-0" />
-                      Add follow-up
-                    </button>
-                  )}
-                </div>
-
-                {noteFormOpen && (
-                  <div className="mb-5 rounded-card border border-line bg-surface overflow-hidden">
-                    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-line bg-surface-muted/50">
-                      <p className="text-[13px] font-semibold text-ink">
-                        {noteForm.id ? 'Edit follow-up' : 'New follow-up'}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={resetNoteForm}
-                        disabled={noteSaving}
-                        className="pf-btn-ghost !px-2 disabled:opacity-50"
-                        aria-label="Close form"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="p-4">
-                      <textarea
-                        value={noteForm.body}
-                        onChange={(e) => setNoteForm((f) => ({ ...f, body: e.target.value }))}
-                        rows={5}
-                        placeholder="Follow-up details, call summary, WhatsApp message, etc."
-                        className="pf-input !h-auto min-h-[120px] py-3 leading-relaxed resize-y"
-                        disabled={noteSaving}
-                        autoFocus
-                      />
-                      {noteFormError && (
-                        <p className="text-[13px] text-danger mt-3">{noteFormError}</p>
-                      )}
-                      <div className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
-                        <button
-                          type="button"
-                          onClick={resetNoteForm}
-                          disabled={noteSaving}
-                          className="pf-btn-secondary w-full sm:w-auto"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSaveNote}
-                          disabled={noteSaving}
-                          className="pf-btn-primary w-full sm:w-auto"
-                        >
-                          <Save className="w-4 h-4" />
-                          {noteSaving ? 'Saving...' : noteForm.id ? 'Update follow-up' : 'Save follow-up'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {dataLoading.notes ? (
-                  <div className="text-center py-10 text-[13px] text-ink-muted">Loading notes...</div>
-                ) : pumpNotes.length === 0 ? (
-                  <EmptyState
-                    title="No follow-ups yet"
-                    description="Add a note or follow-up for this pump."
-                    action={
-                      !noteFormOpen ? (
-                        <button type="button" onClick={openNoteForm} className="pf-btn-primary">
-                          <Plus className="w-4 h-4" />
-                          Add first follow-up
-                        </button>
-                      ) : null
-                    }
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {pumpNotes.map((note) => {
-                      const isEditing = noteForm.id === note.id && noteFormOpen
-                      const followUpTime = formatISTDateTime(note.follow_up_at || note.created_at)
-                      return (
-                        <article
-                          key={note.id}
-                          className={`relative rounded-card border bg-surface overflow-hidden ${
-                            isEditing
-                              ? 'border-brand-400 ring-2 ring-brand-400/20'
-                              : 'border-line'
-                          }`}
-                        >
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-500" aria-hidden />
-                          <div className="pl-4 pr-3 py-4 sm:pl-5">
-                            <p className="text-[13px] sm:text-[14px] text-ink whitespace-pre-wrap break-words leading-relaxed">
-                              {note.body}
-                            </p>
-                            <div className="mt-3 pt-3 border-t border-line flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                              <div className="min-w-0 flex-1 space-y-1.5">
-                                {note.author_name && (
-                                  <div className="flex items-center gap-1.5 text-[12px] text-ink-secondary font-medium">
-                                    <User className="w-3.5 h-3.5 shrink-0 text-brand-500" />
-                                    <span className="truncate">{note.author_name}</span>
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-1.5 text-[12px] text-ink-secondary">
-                                  <Calendar className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{followUpTime}</span>
-                                </div>
-                                {note.updated_at && note.updated_at !== note.created_at && (
-                                  <p className="text-[11px] text-ink-muted">
-                                    Edited {formatISTRelativeTime(note.updated_at)}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => startEditNote(note)}
-                                  className="pf-btn-secondary !h-7 !text-[11px]"
-                                  disabled={noteSaving || noteDeletingId === note.id}
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteNote(note.id)}
-                                  className="pf-btn-ghost !h-7 !text-[11px] text-danger hover:bg-danger-soft"
-                                  disabled={noteDeletingId === note.id}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  {noteDeletingId === note.id ? '…' : 'Delete'}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </article>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Activity Tab */}
             {activeDataTab === 'activity' && (
               <div>
@@ -3331,6 +3200,164 @@ export default function PumpDetail() {
       {isSetupView && isSupportAdmin && (
         <div className="animate-fade-in">
           <PumpSignupSetup pumpId={pump.id} pumpName={pump.name} />
+        </div>
+      )}
+
+      {isNotesView && (
+        <div className="animate-fade-in">
+          <div className="pf-card overflow-hidden">
+            <div className="pf-card-header !py-3.5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+                <div className="min-w-0">
+                  <h2 className="pf-section-title flex items-center gap-2">
+                    <StickyNote className="w-4 h-4 text-brand-500 shrink-0" />
+                    <span className="truncate">Notes</span>
+                  </h2>
+                  <p className="pf-meta mt-0.5">Follow-ups for this pump</p>
+                </div>
+                {!noteFormOpen && (
+                  <button type="button" onClick={openNoteForm} className="pf-btn-primary w-full sm:w-auto">
+                    <Plus className="w-4 h-4 shrink-0" />
+                    Add follow-up
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="p-3 sm:p-5 min-w-0">
+              {noteFormOpen && (
+                <div className="mb-5 rounded-card border border-line bg-surface overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 px-3 sm:px-4 py-3 border-b border-line bg-surface-muted/50">
+                    <p className="text-[13px] font-semibold text-ink">
+                      {noteForm.id ? 'Edit follow-up' : 'New follow-up'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={resetNoteForm}
+                      disabled={noteSaving}
+                      className="pf-btn-ghost !px-2 disabled:opacity-50"
+                      aria-label="Close form"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="p-3 sm:p-4">
+                    <textarea
+                      value={noteForm.body}
+                      onChange={(e) => setNoteForm((f) => ({ ...f, body: e.target.value }))}
+                      rows={5}
+                      placeholder="Follow-up details, call summary, WhatsApp message, etc."
+                      className="pf-input !h-auto min-h-[120px] py-3 leading-relaxed resize-y"
+                      disabled={noteSaving}
+                      autoFocus
+                    />
+                    {noteFormError && (
+                      <p className="text-[13px] text-danger mt-3">{noteFormError}</p>
+                    )}
+                    <div className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
+                      <button
+                        type="button"
+                        onClick={resetNoteForm}
+                        disabled={noteSaving}
+                        className="pf-btn-secondary w-full sm:w-auto"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveNote}
+                        disabled={noteSaving}
+                        className="pf-btn-primary w-full sm:w-auto"
+                      >
+                        <Save className="w-4 h-4" />
+                        {noteSaving ? 'Saving...' : noteForm.id ? 'Update follow-up' : 'Save follow-up'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {dataLoading.notes ? (
+                <div className="text-center py-10 text-[13px] text-ink-muted">Loading notes...</div>
+              ) : pumpNotes.length === 0 ? (
+                <EmptyState
+                  title="No follow-ups yet"
+                  description="Add a note or follow-up for this pump."
+                  action={
+                    !noteFormOpen ? (
+                      <button type="button" onClick={openNoteForm} className="pf-btn-primary">
+                        <Plus className="w-4 h-4" />
+                        Add first follow-up
+                      </button>
+                    ) : null
+                  }
+                />
+              ) : (
+                <div className="space-y-3">
+                  {pumpNotes.map((note) => {
+                    const isEditing = noteForm.id === note.id && noteFormOpen
+                    const followUpTime = formatISTDateTime(note.follow_up_at || note.created_at)
+                    return (
+                      <article
+                        key={note.id}
+                        className={`relative rounded-card border bg-surface overflow-hidden ${
+                          isEditing
+                            ? 'border-brand-400 ring-2 ring-brand-400/20'
+                            : 'border-line'
+                        }`}
+                      >
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-500" aria-hidden />
+                        <div className="pl-4 pr-3 py-4 sm:pl-5">
+                          <p className="text-[13px] sm:text-[14px] text-ink whitespace-pre-wrap break-words leading-relaxed">
+                            {note.body}
+                          </p>
+                          <div className="mt-3 pt-3 border-t border-line flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3">
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              {note.author_name && (
+                                <div className="flex items-center gap-1.5 text-[12px] text-ink-secondary font-medium">
+                                  <User className="w-3.5 h-3.5 shrink-0 text-brand-500" />
+                                  <span className="truncate">{note.author_name}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 text-[12px] text-ink-secondary">
+                                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                                <span className="break-words">{followUpTime}</span>
+                              </div>
+                              {note.updated_at && note.updated_at !== note.created_at && (
+                                <p className="text-[11px] text-ink-muted">
+                                  Edited {formatISTRelativeTime(note.updated_at)}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
+                              <button
+                                type="button"
+                                onClick={() => startEditNote(note)}
+                                className="pf-btn-secondary !h-8 !text-[12px] flex-1 sm:flex-none"
+                                disabled={noteSaving || noteDeletingId === note.id}
+                              >
+                                <Pencil className="w-3 h-3" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNote(note.id)}
+                                className="pf-btn-ghost !h-8 !text-[12px] flex-1 sm:flex-none text-danger hover:bg-danger-soft"
+                                disabled={noteDeletingId === note.id}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                {noteDeletingId === note.id ? '…' : 'Delete'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
