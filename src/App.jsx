@@ -18,6 +18,7 @@ import PumpNotesAudit from './pages/PumpNotesAudit'
 import PaymentHistory from './pages/PaymentHistory'
 import Plans from './pages/Plans'
 import Tasks from './pages/Tasks'
+import AccountDeletionRequests from './pages/AccountDeletionRequests'
 import Layout from './components/Layout'
 
 function ConfigMissing({ title, body }) {
@@ -136,6 +137,7 @@ VITE_SUPABASE_SERVICE_ROLE_KEY=...`}
           <Route path="auth-users-audit" element={<AuthUsersAudit />} />
           <Route path="notes-audit" element={<PumpNotesAudit />} />
           <Route path="payment-history" element={<PaymentHistory />} />
+          <Route path="deletion-requests" element={<AccountDeletionRequests />} />
         </Route>
       </Routes>
     </Router>

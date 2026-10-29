@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Shield,
   CreditCard,
+  UserX,
   LogOut,
   Menu,
   X,
@@ -31,6 +32,7 @@ const ALL_NAV_ITEMS = [
   { path: '/tasks', icon: ClipboardList, label: 'Tasks' },
   { path: '/pumps', icon: Building2, label: 'Pumps' },
   { path: '/plans', icon: Layers, label: 'Plans', supportOnly: true },
+  { path: '/deletion-requests', icon: UserX, label: 'Deletion requests', supportOnly: true },
   { path: '/users', icon: Users, label: 'Users', supportOnly: true },
   { path: '/sales', icon: ShoppingCart, label: 'Sales', supportOnly: true },
   { path: '/leads', icon: UserRoundPlus, label: 'Leads' },
@@ -47,6 +49,7 @@ const ALL_NAV_ITEMS = [
 const PAGE_TITLES = {
   '/': 'Dashboard',
   '/plans': 'Plans',
+  '/deletion-requests': 'Deletion requests',
   '/pumps': 'Pumps',
   '/tasks': 'Tasks',
   '/users': 'Users',
