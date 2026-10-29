@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Layers,
   Building2,
+  ClipboardList,
   Users,
   ShoppingCart,
   UserRoundPlus,
@@ -29,6 +30,7 @@ const ALL_NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/plans', icon: Layers, label: 'Plans', supportOnly: true },
   { path: '/pumps', icon: Building2, label: 'Pumps' },
+  { path: '/tasks', icon: ClipboardList, label: 'Tasks' },
   { path: '/users', icon: Users, label: 'Users', supportOnly: true },
   { path: '/sales', icon: ShoppingCart, label: 'Sales', supportOnly: true },
   { path: '/leads', icon: UserRoundPlus, label: 'Leads' },
@@ -46,6 +48,7 @@ const PAGE_TITLES = {
   '/': 'Dashboard',
   '/plans': 'Plans',
   '/pumps': 'Pumps',
+  '/tasks': 'Tasks',
   '/users': 'Users',
   '/sales': 'Sales',
   '/leads': 'Leads',
@@ -71,6 +74,7 @@ function pumpPageTitle(pathname) {
   if (pathname.match(/^\/pumps\/[^/]+\/information/)) return 'Pump information'
   if (pathname.match(/^\/pumps\/[^/]+\/setup/)) return 'Pump setup'
   if (pathname.match(/^\/pumps\/[^/]+\/notes/)) return 'Pump notes'
+  if (pathname.match(/^\/pumps\/[^/]+\/tasks/)) return 'Pump tasks'
   if (pathname.match(/^\/pumps\/[^/]+\/whatsapp/)) return 'WhatsApp Flows'
   if (pathname.startsWith('/pumps/')) return 'Pump data'
   return 'PetroFI'

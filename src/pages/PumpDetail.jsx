@@ -20,6 +20,7 @@ import {
 } from '../lib/subscriptions'
 import PaymentHistory from './PaymentHistory'
 import WhatsAppFlows from './WhatsAppFlows'
+import PumpTasks from '../components/PumpTasks'
 
 // Helper function to convert text to Title Case
 const toTitleCase = (str) => {
@@ -106,8 +107,9 @@ export default function PumpDetail() {
   const isInformationView = /\/information\/?$/.test(location.pathname)
   const isSetupView = /\/setup\/?$/.test(location.pathname)
   const isNotesView = /\/notes\/?$/.test(location.pathname)
+  const isTasksView = /\/tasks\/?$/.test(location.pathname)
   const isWhatsAppView = /\/whatsapp\/?$/.test(location.pathname)
-  const isDataView = !isInformationView && !isSetupView && !isNotesView && !isWhatsAppView
+  const isDataView = !isInformationView && !isSetupView && !isNotesView && !isTasksView && !isWhatsAppView
   const pumpsListPath = (() => {
     const status = location.state?.pumpsStatus
     const q = location.state?.pumpsSearch
@@ -1489,7 +1491,7 @@ export default function PumpDetail() {
           </div>
 
           <div
-            className="grid grid-cols-2 sm:flex sm:flex-nowrap w-full sm:w-auto sm:shrink-0 p-0.5 rounded-control border border-line bg-surface-muted gap-0.5"
+            className="grid grid-cols-2 sm:flex sm:flex-wrap sm:justify-end w-full sm:w-auto sm:shrink p-0.5 rounded-control border border-line bg-surface-muted gap-0.5"
             role="navigation"
             aria-label="Pump sections"
           >
@@ -1521,6 +1523,13 @@ export default function PumpDetail() {
               className={sectionTabClass}
             >
               Notes
+            </NavLink>
+            <NavLink
+              to={`/pumps/${id}/tasks`}
+              state={location.state}
+              className={sectionTabClass}
+            >
+              Tasks
             </NavLink>
             {isSupportAdmin && (
               <NavLink
@@ -3221,6 +3230,10 @@ export default function PumpDetail() {
             <WhatsAppFlows pumpId={id} />
           </div>
         </div>
+      )}
+
+      {isTasksView && pump && (
+        <PumpTasks pumpId={pump.id} pumpName={pump.name} />
       )}
 
       {isNotesView && (

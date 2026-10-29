@@ -17,6 +17,7 @@ import AuthUsersAudit from './pages/AuthUsersAudit'
 import PumpNotesAudit from './pages/PumpNotesAudit'
 import PaymentHistory from './pages/PaymentHistory'
 import Plans from './pages/Plans'
+import Tasks from './pages/Tasks'
 import Layout from './components/Layout'
 
 function ConfigMissing({ title, body }) {
@@ -117,10 +118,12 @@ VITE_SUPABASE_SERVICE_ROLE_KEY=...`}
           <Route index element={<Dashboard />} />
           <Route path="plans" element={<Plans />} />
           <Route path="pumps" element={<Pumps />} />
+          <Route path="tasks" element={<Tasks />} />
           <Route path="pumps/:id" element={<PumpDetail />} />
           <Route path="pumps/:id/information" element={<PumpDetail />} />
           <Route path="pumps/:id/setup" element={<PumpDetail />} />
           <Route path="pumps/:id/notes" element={<PumpDetail />} />
+          <Route path="pumps/:id/tasks" element={<PumpDetail />} />
           <Route path="pumps/:id/whatsapp" element={<PumpDetail />} />
           <Route path="users" element={<Users />} />
           <Route path="sales" element={<Sales />} />
