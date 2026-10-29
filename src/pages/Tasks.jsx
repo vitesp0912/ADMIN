@@ -272,9 +272,17 @@ export default function Tasks() {
             return (
               <article key={task.id} className="pf-card p-3 sm:p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-[14px] font-semibold text-ink break-words">{task.title}</h2>
+                      <h2 className="text-[15px] font-semibold text-ink break-words">{task.title}</h2>
+                      {pump && (
+                        <Link
+                          to={`/pumps/${pump.id}/tasks`}
+                          className="inline-flex h-6 items-center justify-center rounded-control border border-brand-500 bg-brand-500 px-2.5 text-[12px] font-semibold text-white hover:bg-brand-600"
+                        >
+                          Open pump
+                        </Link>
+                      )}
                       <StatusPill tone={statusTone(task)}>{statusLabel(task)}</StatusPill>
                       <StatusPill tone="info">{taskTypeLabel(task.task_type)}</StatusPill>
                     </div>
@@ -291,32 +299,31 @@ export default function Tasks() {
                       <p className="mt-2 text-[13px] text-ink break-words">Outcome: {task.outcome}</p>
                     )}
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-2 shrink-0 sm:pt-0.5">
+                    {task.status === 'pending' && (
+                      <button
+                        type="button"
+                        onClick={() => setCompleting(task)}
+                        className="inline-flex h-10 w-full sm:w-auto items-center justify-center rounded-control bg-ok px-4 text-[14px] font-semibold text-white hover:opacity-90"
+                      >
+                        Complete
+                      </button>
+                    )}
                     {task.status === 'pending' && (
                       <button
                         type="button"
                         onClick={() => handleCancel(task)}
                         disabled={cancellingId === task.id}
-                        className="pf-btn-primary w-full sm:w-auto"
+                        className="inline-flex h-10 w-full sm:w-auto items-center justify-center rounded-control bg-brand-500 px-4 text-[14px] font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
                       >
                         {cancellingId === task.id ? 'Cancelling...' : 'Cancel'}
                       </button>
-                    )}
-                    {task.status === 'pending' && (
-                      <button type="button" onClick={() => setCompleting(task)} className="pf-btn-secondary w-full sm:w-auto">
-                        Complete
-                      </button>
-                    )}
-                    {pump && (
-                      <Link to={`/pumps/${pump.id}/tasks`} className="pf-btn-secondary w-full sm:w-auto text-center">
-                        Open pump
-                      </Link>
                     )}
                     <button
                       type="button"
                       onClick={() => handleDelete(task)}
                       disabled={deletingId === task.id}
-                      className="pf-btn-ghost w-full sm:w-auto text-danger"
+                      className="inline-flex h-10 w-full sm:w-auto items-center justify-center rounded-control bg-danger px-4 text-[14px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
                     >
                       {deletingId === task.id ? 'Deleting...' : 'Delete'}
                     </button>

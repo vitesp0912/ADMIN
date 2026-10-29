@@ -254,23 +254,27 @@ export default function PumpTasks({ pumpId, pumpName }) {
                       {task.status === 'pending' && (
                         <button
                           type="button"
-                          onClick={() => handleCancel(task)}
-                          disabled={cancellingId === task.id}
-                          className="pf-btn-primary w-full sm:w-auto"
+                          onClick={() => setCompleting(task)}
+                          className="inline-flex h-10 w-full sm:w-auto items-center justify-center rounded-control bg-ok px-4 text-[14px] font-semibold text-white hover:opacity-90"
                         >
-                          {cancellingId === task.id ? 'Cancelling...' : 'Cancel'}
+                          Complete
                         </button>
                       )}
                       {task.status === 'pending' && (
-                        <button type="button" onClick={() => setCompleting(task)} className="pf-btn-secondary w-full sm:w-auto">
-                          Complete
+                        <button
+                          type="button"
+                          onClick={() => handleCancel(task)}
+                          disabled={cancellingId === task.id}
+                          className="inline-flex h-10 w-full sm:w-auto items-center justify-center rounded-control bg-brand-500 px-4 text-[14px] font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+                        >
+                          {cancellingId === task.id ? 'Cancelling...' : 'Cancel'}
                         </button>
                       )}
                       <button
                         type="button"
                         onClick={() => handleDelete(task)}
                         disabled={deletingId === task.id}
-                        className="pf-btn-ghost w-full sm:w-auto text-danger"
+                        className="inline-flex h-10 w-full sm:w-auto items-center justify-center rounded-control bg-danger px-4 text-[14px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
                       >
                         {deletingId === task.id ? 'Deleting...' : 'Delete'}
                       </button>
