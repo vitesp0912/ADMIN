@@ -28,9 +28,9 @@ import {
 
 const ALL_NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/plans', icon: Layers, label: 'Plans', supportOnly: true },
-  { path: '/pumps', icon: Building2, label: 'Pumps' },
   { path: '/tasks', icon: ClipboardList, label: 'Tasks' },
+  { path: '/pumps', icon: Building2, label: 'Pumps' },
+  { path: '/plans', icon: Layers, label: 'Plans', supportOnly: true },
   { path: '/users', icon: Users, label: 'Users', supportOnly: true },
   { path: '/sales', icon: ShoppingCart, label: 'Sales', supportOnly: true },
   { path: '/leads', icon: UserRoundPlus, label: 'Leads' },

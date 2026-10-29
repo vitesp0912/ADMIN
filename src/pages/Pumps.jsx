@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { db } from '../lib/supabase'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Building2, CheckCircle, XCircle, Gauge, Phone } from 'lucide-react'
-import { formatISTDateTime, formatISTRelativeTime, phoneToTel } from '../lib/datetime'
+import { formatISTDateTime, formatISTRelativeTime, istDayDiff, phoneToTel } from '../lib/datetime'
 import StatusPill from '../components/ui/StatusPill'
 import {
   SUBSCRIPTION_SELECT,
@@ -14,6 +14,12 @@ import {
 } from '../lib/subscriptions'
 
 const VALID_STATUS = new Set(['active', 'pending', 'rejected'])
+const STALE_ACTIVITY_DAYS = 3
+
+function isStaleActivity(log, now = new Date()) {
+  if (!log?.created_at) return false
+  return istDayDiff(log.created_at, now) >= STALE_ACTIVITY_DAYS
+}
 const LIST_UI_KEY = 'petrofi.pumpsList.ui'
 
 const readListUi = () => {
@@ -42,6 +48,7 @@ export default function Pumps() {
   const [pumps, setPumps] = useState([])
   const [meterReadings, setMeterReadings] = useState({})
   const [lastActivity, setLastActivity] = useState({})
+  const [activityReady, setActivityReady] = useState(false)
   const [subscriptionsByPump, setSubscriptionsByPump] = useState({})
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(null)
@@ -115,6 +122,7 @@ export default function Pumps() {
   }, [loading, filterStatus, searchTerm, pumps.length, meterReadings, lastActivity])
 
   const fetchPumps = async () => {
+    setActivityReady(false)
     try {
       let query = db.from('pumps').select('*').order('created_at', { ascending: false })
 
@@ -140,6 +148,7 @@ export default function Pumps() {
         setMeterReadings({})
         setLastActivity({})
         setSubscriptionsByPump({})
+        setActivityReady(true)
       }
     } catch (error) {
       console.error('Error fetching pumps:', error)
@@ -211,6 +220,9 @@ export default function Pumps() {
       setLastActivity(activityMap)
     } catch (error) {
       console.error('Error fetching last activity:', error)
+      setLastActivity({})
+    } finally {
+      setActivityReady(true)
     }
   }
 
@@ -435,11 +447,14 @@ export default function Pumps() {
                 </tr>
               </thead>
               <tbody>
-                {filteredPumps.map((pump) => (
+                {filteredPumps.map((pump) => {
+                  const activity = lastActivity[pump.id]
+                  const stale = filterStatus === 'active' && activityReady && isStaleActivity(activity)
+                  return (
                   <tr 
                     key={pump.id} 
                     onClick={(e) => handleRowClick(pump.id, e)}
-                    className="cursor-pointer"
+                    className={stale ? 'cursor-pointer [&_td]:!text-danger [&_td_:not(.keep-tone):not(.keep-tone_*)]:!text-danger' : 'cursor-pointer'}
                   >
                     <td className="px-4 py-4 whitespace-nowrap">
                       <span className="font-medium text-ink">{pump.pump_code || 'N/A'}</span>
@@ -457,7 +472,7 @@ export default function Pumps() {
                           <a
                             href={`tel:${phoneToTel(pump.phone)}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
+                            className="keep-tone inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
                             title={`Call ${pump.phone}`}
                             aria-label={`Call ${pump.name}`}
                           >
@@ -483,7 +498,7 @@ export default function Pumps() {
                               {formatPlanName(sub.plan)}
                             </div>
                             <div className="mt-1 flex items-center gap-2 flex-wrap">
-                              <StatusPill tone={subscriptionStatusTone(sub.status)}>
+                              <StatusPill tone={subscriptionStatusTone(sub.status)} className="keep-tone">
                                 {formatSubscriptionStatus(sub.status)}
                               </StatusPill>
                               {formatPlanMeta(sub.plan) && (
@@ -509,20 +524,20 @@ export default function Pumps() {
                       )}
                     </td>
                     <td className="px-4 py-4 min-w-0">
-                      {lastActivity[pump.id] ? (
+                      {activity ? (
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-ink truncate">
-                            {lastActivity[pump.id].action_label || lastActivity[pump.id].action}
+                          <div className="text-sm font-medium truncate">
+                            {activity.action_label || activity.action}
                             {' · '}
-                            {lastActivity[pump.id].entity_label || lastActivity[pump.id].entity_type}
+                            {activity.entity_label || activity.entity_type}
                           </div>
                           <div
-                            className="text-xs text-ink-muted mt-0.5 truncate"
-                            title={formatISTDateTime(lastActivity[pump.id].created_at, { withSeconds: true })}
+                            className="text-xs mt-0.5 truncate"
+                            title={formatISTDateTime(activity.created_at, { withSeconds: true })}
                           >
-                            {formatISTRelativeTime(lastActivity[pump.id].created_at)}
+                            {formatISTRelativeTime(activity.created_at)}
                             {' · '}
-                            {lastActivity[pump.id].actor_name || 'System'}
+                            {activity.actor_name || 'System'}
                           </div>
                         </div>
                       ) : (
@@ -530,7 +545,8 @@ export default function Pumps() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
